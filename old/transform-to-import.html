@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSV Converter</title>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --panel: #121212;
+      --border: #262626;
+      --text: #e5e5e5;
+      --text-muted: #a3a3a3;
+      --accent: #ffffff;
+      --accent-dim: #f5f5f5;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 2rem 1rem;
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      max-width: 900px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1rem;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      color: var(--accent);
+    }
+
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+    }
+
+    .config-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      background-color: var(--panel);
+      padding: 1.25rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    input[type="text"],
+    input[type="date"],
+    select,
+    input[type="file"] {
+      background-color: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.5rem;
+      font-family: inherit;
+      font-size: 0.85rem;
+      border-radius: 2px;
+      outline: none;
+      width: 100%;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--accent);
+    }
+
+    input[type="file"]::file-selector-button {
+      background-color: var(--accent);
+      color: var(--bg);
+      border: none;
+      padding: 0.25rem 0.75rem;
+      margin-right: 0.75rem;
+      border-radius: 2px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    input[type="file"]::file-selector-button:hover {
+      background-color: var(--accent-dim);
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    button {
+      background-color: var(--accent);
+      color: var(--bg);
+      border: none;
+      padding: 0.625rem 1.5rem;
+      font-weight: 600;
+      border-radius: 2px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: background-color 0.1s ease;
+    }
+
+    button:hover:not(:disabled) {
+      background-color: var(--accent-dim);
+    }
+
+    button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .panel {
+      border: 1px solid var(--border);
+      background-color: var(--panel);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.8rem;
+    }
+
+    th {
+      background-color: rgba(255, 255, 255, 0.02);
+      color: var(--text);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    td {
+      color: var(--text);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .empty-state {
+      padding: 3rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>CSV Converter</h1>
+      <p class="subtitle">Convert clinic scheduling exports into custom mapped CSV format.</p>
+    </header>
+
+    <div class="config-grid">
+      <div class="field">
+        <label for="refDate">Reference Date</label>
+        <input type="date" id="refDate">
+      </div>
+      <div class="field">
+        <label for="especialidadeSel">Especialidade</label>
+        <select id="especialidadeSel">
+          <option value="Ortopedia">Ortopedia</option>
+          <option value="Cardiologia">Cardiologia</option>
+          <option value="">(None)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="localSel">Local</label>
+        <select id="localSel">
+          <option value="Samambaia">Samambaia</option>
+          <option value="Gama">Gama</option>
+          <option value="Sobradinho">Sobradinho</option>
+          <option value="">(None)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="fileName">Export Name</label>
+        <input type="text" id="fileName" value="processed_data.csv">
+      </div>
+      <div class="field" style="grid-column: span 2;">
+        <label for="csvFileInput">Choose CSV File</label>
+        <input type="file" id="csvFileInput" accept=".csv">
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Preview Output (First 3 Mapped Rows)</span>
+      </div>
+      <div class="table-wrapper" id="previewContainer">
+        <div class="empty-state">Upload a CSV source file above to load the dynamic preview.</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="downloadBtn" disabled>Export Mapped CSV</button>
+    </div>
+  </div>
+
+  <script>
+    let mappedData = [];
+    let rawCsvText = '';
+
+    const fileInput = document.getElementById('csvFileInput');
+    const refDateInput = document.getElementById('refDate');
+    const especialidadeSel = document.getElementById('especialidadeSel');
+    const localSel = document.getElementById('localSel');
+    const fileNameInput = document.getElementById('fileName');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const previewContainer = document.getElementById('previewContainer');
+
+    // Set default value for tomorrow's date using local time
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const yyyy = tomorrow.getFullYear();
+    const mm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    const dd = String(tomorrow.getDate()).padStart(2, '0');
+    refDateInput.value = `${yyyy}-${mm}-${dd}`;
+
+    // RFC 4180 Compliant Parser
+    function parseCSV(text) {
+      const lines = [];
+      let row = [""];
+      let inQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        const next = text[i + 1];
+
+        if (c === '"') {
+          if (inQuotes && next === '"') { 
+            row[row.length - 1] += '"'; 
+            i++; 
+          } else { 
+            inQuotes = !inQuotes; 
+          }
+        } else if (c === ',' && !inQuotes) {
+          row.push('');
+        } else if ((c === '\r' || c === '\n') && !inQuotes) {
+          if (c === '\r' && next === '\n') { i++; }
+          lines.push(row);
+          row = [''];
+        } else {
+          row[row.length - 1] += c;
+        }
+      }
+      if (row.length > 1 || row[0] !== '') {
+        lines.push(row);
+      }
+      return lines;
+    }
+
+    // Space-resistant phone parsing
+    function extractPhones(phoneStr) {
+      if (!phoneStr) return [];
+      const regex = /(?:\(?\d{2}\)?\s?\d{4,5}-?\d{4})/g;
+      const matches = phoneStr.match(regex) || [];
+
+      return matches.map(num => {
+        const cleaned = num.replace(/\D/g, '');
+        if (cleaned.length === 11) {
+          return `(${cleaned.substring(0, 2)}) ${cleaned.substring(2, 7)}-${cleaned.substring(7)}`;
+        } else if (cleaned.length === 10) {
+          return `(${cleaned.substring(0, 2)}) ${cleaned.substring(2, 6)}-${cleaned.substring(6)}`;
+        }
+        return num.trim();
+      });
+    }
+
+    function processCSVRows(rawText) {
+      const parsedLines = parseCSV(rawText);
+      if (parsedLines.length === 0) return [];
+
+      const headers = parsedLines[0].map(h => h.replace(/^\uFEFF/, '').trim());
+
+      const idxNome = headers.indexOf('Nome');
+      const idxTelefones = headers.indexOf('Telefone(s)');
+      const idxProcedimento = headers.indexOf('Procedimento');
+
+      const mappedRows = [];
+      const refDate = refDateInput.value;
+      const chosenEspecialidade = especialidadeSel.value;
+      const chosenLocal = localSel.value;
+
+      for (let i = 1; i < parsedLines.length; i++) {
+        const row = parsedLines[i];
+        if (row.length === 1 && row[0] === '') continue;
+
+        // 1. Nome -> Nome
+        const nome = (idxNome !== -1 && row[idxNome]) ? row[idxNome].trim() : '';
+
+        // 2. Telefone
+        const rawPhones = (idxTelefones !== -1 && row[idxTelefones]) ? row[idxTelefones] : '';
+        const parsedPhones = extractPhones(rawPhones);
+        const firstPhone = parsedPhones[0] || '';
+        const remainingPhones = parsedPhones.slice(1).join(', ');
+
+        // 3. Etiquetas -> Date, Automação, [Select Specialty], [Select Local]
+        const tags = [refDate, 'Automação'];
+        if (chosenEspecialidade) tags.push(chosenEspecialidade);
+        if (chosenLocal) tags.push(chosenLocal);
+        const etiquetas = tags.join(', ');
+
+        // 4. Notas Internas -> Prefix output: Outros telefones: [remaining] | Procedimento: [proc]
+        const procedimento = (idxProcedimento !== -1 && row[idxProcedimento]) ? row[idxProcedimento].trim() : '';
+        let notasInternas = '';
+        if (remainingPhones && procedimento) {
+          notasInternas = `Outros telefones: ${remainingPhones} | Procedimento: ${procedimento}`;
+        } else if (remainingPhones) {
+          notasInternas = `Outros telefones: ${remainingPhones}`;
+        } else if (procedimento) {
+          notasInternas = `Procedimento: ${procedimento}`;
+        }
+
+        mappedRows.push({
+          Nome: nome,
+          Telefone: firstPhone,
+          Email: '',
+          Instagram: '',
+          Etiquetas: etiquetas,
+          NotasInternas: notasInternas
+        });
+      }
+
+      return mappedRows;
+    }
+
+    function renderPreview(data) {
+      if (data.length === 0) {
+        previewContainer.innerHTML = '<div class="empty-state">No matching rows mapped. Check your source CSV columns.</div>';
+        return;
+      }
+
+      const previewRows = data.slice(0, 3);
+      let tableHtml = `
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Telefone</th>
+              <th>Email</th>
+              <th>Instagram</th>
+              <th>Etiquetas</th>
+              <th>Notas Internas</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      previewRows.forEach(row => {
+        tableHtml += `
+          <tr>
+            <td>${escapeHtml(row.Nome)}</td>
+            <td>${escapeHtml(row.Telefone)}</td>
+            <td>—</td>
+            <td>—</td>
+            <td>"${escapeHtml(row.Etiquetas)}"</td>
+            <td>${escapeHtml(row.NotasInternas)}</td>
+          </tr>
+        `;
+      });
+
+      tableHtml += `
+          </tbody>
+        </table>
+      `;
+      previewContainer.innerHTML = tableHtml;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    function generateCSVString(data) {
+      const headers = ['Nome', 'Telefone', 'Email', 'Instagram', 'Etiquetas', 'Notas Internas'];
+      const escapeField = (field) => {
+        if (field === null || field === undefined) return '""';
+        const stringVal = String(field);
+        return `"${stringVal.replace(/"/g, '""')}"`;
+      };
+
+      const csvLines = [headers.join(',')];
+
+      data.forEach(row => {
+        const line = [
+          escapeField(row.Nome),
+          escapeField(row.Telefone),
+          escapeField(row.Email),
+          escapeField(row.Instagram),
+          escapeField(row.Etiquetas),
+          escapeField(row.NotasInternas)
+        ];
+        csvLines.push(line.join(','));
+      });
+
+      return csvLines.join('\n');
+    }
+
+    function handleFileSelection(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        rawCsvText = evt.target.result;
+        triggerProcessing();
+      };
+      reader.readAsText(file);
+    }
+
+    function triggerProcessing() {
+      if (!rawCsvText) return;
+      mappedData = processCSVRows(rawCsvText);
+      renderPreview(mappedData);
+      downloadBtn.disabled = mappedData.length === 0;
+    }
+
+    fileInput.addEventListener('change', handleFileSelection);
+    refDateInput.addEventListener('change', triggerProcessing);
+    especialidadeSel.addEventListener('change', triggerProcessing);
+    localSel.addEventListener('change', triggerProcessing);
+
+    downloadBtn.addEventListener('click', () => {
+      if (mappedData.length === 0) return;
+
+      const csvOutputStr = generateCSVString(mappedData);
+      const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvOutputStr], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      let exportName = fileNameInput.value.trim();
+      if (!exportName) exportName = 'processed_data.csv';
+      if (!exportName.endsWith('.csv')) exportName += '.csv';
+
+      link.setAttribute('href', url);
+      link.setAttribute('download', exportName);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+  </script>
+</body>
+</html>
