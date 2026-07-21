@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Utility Console</title>
+    <!-- SheetJS for Native Excel XLSX Exporting -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.mini.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --card-bg: #121212;
+            --border: #262626;
+            --border-focus: #ffffff;
+            --text-main: #e5e5e5;
+            --text-muted: #a3a3a3;
+            --accent: #ffffff;
+            --accent-dim: #f5f5f5;
+            --button-sec-bg: #1a1a1a;
+            --button-sec-hover: #2a2a2a;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-size: 13px;
+            line-height: 1.5;
+            padding: 2.5rem 1rem;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 950px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        header {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1.25rem;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--accent);
+            margin-bottom: 0.35rem;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        /* Configuration Panel */
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            background-color: var(--card-bg);
+            padding: 1.25rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        input[type="text"],
+        input[type="date"],
+        select,
+        input[type="file"] {
+            background-color: var(--bg-color);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 0.5rem;
+            font-family: inherit;
+            font-size: 0.85rem;
+            border-radius: 4px;
+            outline: none;
+            width: 100%;
+            transition: border-color 0.15s ease;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--border-focus);
+        }
+
+        .input-suffix-wrapper {
+            display: flex;
+            align-items: center;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding-right: 0.75rem;
+        }
+
+        .input-suffix-wrapper input {
+            border: none;
+        }
+
+        .input-suffix-wrapper span {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            user-select: none;
+            margin-left: 0.25rem;
+            font-weight: 600;
+        }
+
+        input[type="file"]::file-selector-button {
+            background-color: var(--accent);
+            color: var(--bg-color);
+            border: none;
+            padding: 0.25rem 0.75rem;
+            margin-right: 0.75rem;
+            border-radius: 2px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        input[type="file"]::file-selector-button:hover {
+            background-color: var(--accent-dim);
+        }
+
+        /* Stacked Card Layout */
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .card-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .file-or-paste-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        @media (min-width: 768px) {
+            .file-or-paste-container {
+                flex-direction: row;
+                align-items: flex-start;
+            }
+            .file-or-paste-container > .field:first-child {
+                width: 300px;
+                flex-shrink: 0;
+            }
+            .file-or-paste-container > .divider-container {
+                align-self: center;
+            }
+        }
+
+        textarea {
+            width: 100%;
+            height: 180px;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-main);
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.85rem;
+            padding: 0.75rem;
+            resize: vertical;
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+
+        textarea:focus {
+            border-color: var(--border-focus);
+        }
+
+        /* Live Preview Table */
+        .table-panel {
+            border: 1px solid var(--border);
+            background-color: var(--card-bg);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .table-panel-header {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+        }
+
+        th {
+            background-color: rgba(255, 255, 255, 0.02);
+            color: var(--text-main);
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        td {
+            color: var(--text-main);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .empty-state {
+            padding: 3rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        /* Buttons & Actions */
+        .actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .actions-right {
+            justify-content: flex-end;
+        }
+
+        button.btn {
+            background-color: var(--accent);
+            color: var(--bg-color);
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            padding: 0.6rem 1.2rem;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background-color 0.15s, border-color 0.15s, transform 0.1s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        button.btn:hover:not(:disabled) {
+            background-color: var(--accent-dim);
+            border-color: var(--accent-dim);
+        }
+
+        button.btn:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+
+        button.btn.secondary {
+            background-color: var(--button-sec-bg);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+        }
+
+        button.btn.secondary:hover:not(:disabled) {
+            background-color: var(--button-sec-hover);
+            border-color: var(--text-muted);
+        }
+
+        button.btn:disabled {
+            opacity: 0.25;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        /* Feedback Status */
+        .status-container {
+            text-align: center;
+            min-height: 1.5rem;
+        }
+
+        .status {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--accent);
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Data Utility Console</h1>
+        <p class="subtitle">Provide input via File Upload OR Paste. Process and export data to multiple formats seamlessly.</p>
+    </header>
+
+    <!-- Unified Global Configurations -->
+    <div class="config-grid">
+        <div class="field">
+            <label for="refDate">Reference Date</label>
+            <input type="date" id="refDate">
+        </div>
+        <div class="field">
+            <label for="especialidadeSel">Especialidade</label>
+            <select id="especialidadeSel">
+                <option value="Ortopedia">Ortopedia</option>
+                <option value="Cardiologia">Cardiologia</option>
+                <option value="">(None)</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="localSel">Local</label>
+            <select id="localSel">
+                <option value="Samambaia">Samambaia</option>
+                <option value="Gama">Gama</option>
+                <option value="Sobradinho">Sobradinho</option>
+                <option value="">(None)</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="exportFormat">Export Format</label>
+            <select id="exportFormat" onchange="updateExtensionLabel()">
+                <option value="csv">CSV (.csv)</option>
+                <option value="xlsx">Excel (.xlsx)</option>
+            </select>
+        </div>
+        <div class="field" style="grid-column: span 2;">
+            <label for="exportNameInput">Export Name</label>
+            <div class="input-suffix-wrapper">
+                <input type="text" id="exportNameInput" value="" placeholder="processed_clinic_data">
+                <span id="extensionLabel">.csv</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. Input Channel Card -->
+    <div class="card">
+        <div class="card-title">1. Input Channel</div>
+        
+        <div class="file-or-paste-container">
+            <div class="field">
+                <label for="csvFileInput">Upload CSV Source File</label>
+                <input type="file" id="csvFileInput" accept=".csv">
+            </div>
+            
+            <div class="divider-container" style="text-align: center; font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 0 0.5rem;">OR</div>
+
+            <div class="field" style="flex-grow: 1;">
+                <label for="htmlTextPaste">Paste HTML Table or Plain CSV</label>
+                <textarea id="htmlTextPaste" placeholder="Paste <table>...</table> HTML or plain CSV contents here..."></textarea>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button id="clearBtn" class="btn secondary" onclick="clearWorkflow()">Clear Inputs</button>
+        </div>
+    </div>
+
+    <!-- 2. Live Pipeline Preview Card -->
+    <div class="card">
+        <div class="card-title">2. Live Pipeline Preview</div>
+        <div class="table-panel">
+            <div class="table-panel-header">
+                <span class="card-title" style="font-size: 0.7rem;">Expected Output Format (First 3 Rows)</span>
+            </div>
+            <div class="table-wrapper" id="previewContainer">
+                <div class="empty-state">Upload a CSV or paste HTML table to trigger the processing pipeline.</div>
+            </div>
+        </div>
+
+        <div class="actions actions-right">
+            <button id="copyBtn" class="btn secondary" disabled onclick="copyMappedCSVToClipboard()">Copy to Clipboard</button>
+            <button id="downloadBtn" class="btn" disabled onclick="downloadMappedData()">Export Mapped Data</button>
+        </div>
+    </div>
+
+    <!-- Feedback Banner -->
+    <div class="status-container">
+        <span id="status" class="status"></span>
+    </div>
+</div>
+
+<script>
+    /* ==========================================
+       GLOBAL STATE & CONTROLS
+       ========================================== */
+    let parsedSourceRows = []; // Standardized format: { Nome, Telefone, Procedimento }
+    let mappedData = [];       // Final mapped structure: { Nome, Telefone, Email, Instagram, Etiquetas, NotasInternas }
+    let statusTimeout;
+
+    const fileInput = document.getElementById('csvFileInput');
+    const textPasteInput = document.getElementById('htmlTextPaste');
+    const refDateInput = document.getElementById('refDate');
+    const especialidadeSel = document.getElementById('especialidadeSel');
+    const localSel = document.getElementById('localSel');
+    const exportNameInput = document.getElementById('exportNameInput');
+    const exportFormatSel = document.getElementById('exportFormat');
+    const extensionLabel = document.getElementById('extensionLabel');
+    
+    const copyBtn = document.getElementById('copyBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const previewContainer = document.getElementById('previewContainer');
+    const statusMsg = document.getElementById('status');
+
+    // Default Date setup (Tomorrow's Local Date)
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const yyyy = tomorrow.getFullYear();
+    const mm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    const dd = String(tomorrow.getDate()).padStart(2, '0');
+    refDateInput.value = `${yyyy}-${mm}-${dd}`;
+
+    // Initialize Default File Name on load
+    updateDefaultFileName();
+
+    /* ==========================================
+       SHARED UTILITIES
+       ========================================== */
+    function showStatus(text) {
+        clearTimeout(statusTimeout);
+        statusMsg.textContent = text;
+        statusTimeout = setTimeout(() => {
+            if (statusMsg.textContent === text) {
+                statusMsg.textContent = '';
+            }
+        }, 4000);
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function updateExtensionLabel() {
+        const format = exportFormatSel.value;
+        extensionLabel.textContent = `.${format}`;
+    }
+
+    // Dynamic Filename Generator: <referenceDate>_<local>_<especialidade>
+    function updateDefaultFileName() {
+        const refDate = refDateInput.value;
+        const chosenEspecialidade = especialidadeSel.value;
+        const chosenLocal = localSel.value;
+
+        const nameParts = [refDate];
+        if (chosenLocal) nameParts.push(chosenLocal);
+        if (chosenEspecialidade) nameParts.push(chosenEspecialidade);
+
+        // Sanitize name format (allow alphanumeric, dashes, and underscores)
+        const generatedName = nameParts.join('_').replace(/[^a-zA-Z0-9_\-]/g, '_');
+        exportNameInput.value = generatedName || 'processed_clinic_data';
+    }
+
+    /* ==========================================
+       PARSING PIPELINE (HTML OR CSV DETECTION)
+       ========================================== */
+
+    // RFC 4180 Compliant CSV Parser
+    function parseCSV(text) {
+        const lines = [];
+        let row = [""];
+        let inQuotes = false;
+
+        for (let i = 0; i < text.length; i++) {
+            const c = text[i];
+            const next = text[i + 1];
+
+            if (c === '"') {
+                if (inQuotes && next === '"') { 
+                    row[row.length - 1] += '"'; 
+                    i++; 
+                } else { 
+                    inQuotes = !inQuotes; 
+                }
+            } else if (c === ',' && !inQuotes) {
+                row.push('');
+            } else if ((c === '\r' || c === '\n') && !inQuotes) {
+                if (c === '\r' && next === '\n') { i++; }
+                lines.push(row);
+                row = [''];
+            } else {
+                row[row.length - 1] += c;
+            }
+        }
+        if (row.length > 1 || row[0] !== '') {
+            lines.push(row);
+        }
+        return lines;
+    }
+
+    // Space-resistant phone parsing
+    function extractPhones(phoneStr) {
+        if (!phoneStr) return [];
+        const regex = /(?:\(?\d{2}\)?\s?\d{4,5}-?\d{4})/g;
+        const matches = phoneStr.match(regex) || [];
+
+        return matches.map(num => {
+            const cleaned = num.replace(/\D/g, '');
+            if (cleaned.length === 11) {
+                return `(${cleaned.substring(0, 2)}) ${cleaned.substring(2, 7)}-${cleaned.substring(7)}`;
+            } else if (cleaned.length === 10) {
+                return `(${cleaned.substring(0, 2)}) ${cleaned.substring(2, 6)}-${cleaned.substring(6)}`;
+            }
+            return num.trim();
+        });
+    }
+
+    // Analyzes raw text inputs to decide if they are HTML table strings or raw CSV lines
+    function processRawInput(inputStr) {
+        const text = inputStr.trim();
+        if (!text) return [];
+
+        // HTML Parsing Pipeline
+        if (text.startsWith('<') || text.includes('<table')) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
+            const table = doc.querySelector('table');
+
+            if (!table) {
+                showStatus("HTML table detected but could not find a valid <table> element.");
+                return [];
+            }
+
+            const rows = table.querySelectorAll('tr');
+            const tableData = [];
+            let detectedHeaders = [];
+
+            rows.forEach((row, rowIndex) => {
+                const cells = row.querySelectorAll('th, td');
+                if (cells.length === 0) return;
+
+                const rowValues = Array.from(cells).map(cell => cell.textContent.trim());
+
+                if (rowIndex === 0 || detectedHeaders.length === 0) {
+                    detectedHeaders = rowValues;
+                } else {
+                    const rowObj = {};
+                    rowValues.forEach((val, colIdx) => {
+                        const colName = detectedHeaders[colIdx] || `Col_${colIdx}`;
+                        rowObj[colName] = val;
+                    });
+                    tableData.push(rowObj);
+                }
+            });
+
+            return standardiseDataStructure(tableData);
+        }
+
+        // Default: Plain Raw CSV Parser
+        const parsedLines = parseCSV(text);
+        if (parsedLines.length === 0) return [];
+        return buildStructureFromCSV(parsedLines);
+    }
+
+    function buildStructureFromCSV(parsedLines) {
+        const headers = parsedLines[0].map(h => h.replace(/^\uFEFF/, '').trim());
+        const dataRows = [];
+
+        for (let i = 1; i < parsedLines.length; i++) {
+            const row = parsedLines[i];
+            if (row.length === 1 && row[0] === '') continue;
+
+            const rowObj = {};
+            row.forEach((val, idx) => {
+                const key = headers[idx] || `Col_${idx}`;
+                rowObj[key] = val;
+            });
+            dataRows.push(rowObj);
+        }
+        return standardiseDataStructure(dataRows);
+    }
+
+    // Normalizes input headers/keys to matching structure
+    function standardiseDataStructure(rawObjectsList) {
+        return rawObjectsList.map(obj => {
+            const keyNome = Object.keys(obj).find(k => k.toLowerCase() === 'nome') || '';
+            const keyTelefones = Object.keys(obj).find(k => k.toLowerCase().includes('telefone')) || '';
+            const keyProcedimento = Object.keys(obj).find(k => k.toLowerCase() === 'procedimento') || '';
+
+            return {
+                Nome: keyNome ? obj[keyNome] : '',
+                Telefones: keyTelefones ? obj[keyTelefones] : '',
+                Procedimento: keyProcedimento ? obj[keyProcedimento] : ''
+            };
+        });
+    }
+
+    /* ==========================================
+       TRANSFORMATION PIPELINE
+       ========================================== */
+    function runTransformationPipeline() {
+        if (parsedSourceRows.length === 0) {
+            mappedData = [];
+            renderPreview(mappedData);
+            toggleActionButtons(false);
+            return;
+        }
+
+        const refDate = refDateInput.value;
+        const chosenEspecialidade = especialidadeSel.value;
+        const chosenLocal = localSel.value;
+
+        mappedData = parsedSourceRows.map(row => {
+            const nome = row.Nome ? row.Nome.trim() : '';
+
+            const parsedPhones = extractPhones(row.Telefones);
+            const firstPhone = parsedPhones[0] || '';
+            const remainingPhones = parsedPhones.slice(1).join(', ');
+
+            const tags = [refDate, 'Automação'];
+            if (chosenEspecialidade) tags.push(chosenEspecialidade);
+            if (chosenLocal) tags.push(chosenLocal);
+            const etiquetas = tags.join(', ');
+
+            const procedimento = row.Procedimento ? row.Procedimento.trim() : '';
+            let notasInternas = '';
+            if (remainingPhones && procedimento) {
+                notasInternas = `Outros telefones: ${remainingPhones} | Procedimento: ${procedimento}`;
+            } else if (remainingPhones) {
+                notasInternas = `Outros telefones: ${remainingPhones}`;
+            } else if (procedimento) {
+                notasInternas = `Procedimento: ${procedimento}`;
+            }
+
+            return {
+                Nome: nome,
+                Telefone: firstPhone,
+                Email: '',
+                Instagram: '',
+                Etiquetas: etiquetas,
+                NotasInternas: notasInternas
+            };
+        });
+
+        renderPreview(mappedData);
+        toggleActionButtons(mappedData.length > 0);
+    }
+
+    function renderPreview(data) {
+        if (data.length === 0) {
+            previewContainer.innerHTML = '<div class="empty-state">Upload a CSV or paste HTML table to trigger the processing pipeline.</div>';
+            return;
+        }
+
+        const previewRows = data.slice(0, 3);
+        let tableHtml = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Telefone</th>
+                        <th>Email</th>
+                        <th>Instagram</th>
+                        <th>Etiquetas</th>
+                        <th>Notas Internas</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        previewRows.forEach(row => {
+            tableHtml += `
+                <tr>
+                    <td>${escapeHtml(row.Nome)}</td>
+                    <td>${escapeHtml(row.Telefone)}</td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td>"${escapeHtml(row.Etiquetas)}"</td>
+                    <td>${escapeHtml(row.NotasInternas)}</td>
+                </tr>
+            `;
+        });
+
+        tableHtml += `
+                </tbody>
+            </table>
+        `;
+        previewContainer.innerHTML = tableHtml;
+    }
+
+    function generateCSVString(data) {
+        const headers = ['Nome', 'Telefone', 'Email', 'Instagram', 'Etiquetas', 'Notas Internas'];
+        const escapeField = (field) => {
+            if (field === null || field === undefined) return '""';
+            const stringVal = String(field);
+            return `"${stringVal.replace(/"/g, '""')}"`;
+        };
+
+        const csvLines = [headers.join(',')];
+
+        data.forEach(row => {
+            const line = [
+                escapeField(row.Nome),
+                escapeField(row.Telefone),
+                escapeField(row.Email),
+                escapeField(row.Instagram),
+                escapeField(row.Etiquetas),
+                escapeField(row.NotasInternas)
+            ];
+            csvLines.push(line.join(','));
+        });
+
+        return csvLines.join('\n');
+    }
+
+    function toggleActionButtons(enable) {
+        copyBtn.disabled = !enable;
+        downloadBtn.disabled = !enable;
+    }
+
+    /* ==========================================
+       EVENT HANDLERS
+       ========================================== */
+
+    // Listen for file changes
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        textPasteInput.value = ''; // Clean conflicting workspace
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            parsedSourceRows = processRawInput(evt.target.result);
+            if (parsedSourceRows.length > 0) {
+                showStatus("Successfully imported CSV!");
+            }
+            runTransformationPipeline();
+        };
+        reader.readAsText(file);
+    });
+
+    // Listen for paste text inputs
+    textPasteInput.addEventListener('input', (e) => {
+        fileInput.value = ''; // Clean conflicting workspace
+        const content = e.target.value;
+        parsedSourceRows = processRawInput(content);
+        if (parsedSourceRows.length > 0) {
+            showStatus("Recognized and imported pasted payload!");
+        }
+        runTransformationPipeline();
+    });
+
+    // Configuration Change Watchers
+    refDateInput.addEventListener('change', () => {
+        updateDefaultFileName();
+        runTransformationPipeline();
+    });
+    especialidadeSel.addEventListener('change', () => {
+        updateDefaultFileName();
+        runTransformationPipeline();
+    });
+    localSel.addEventListener('change', () => {
+        updateDefaultFileName();
+        runTransformationPipeline();
+    });
+
+    function clearWorkflow() {
+        fileInput.value = '';
+        textPasteInput.value = '';
+        parsedSourceRows = [];
+        mappedData = [];
+        updateDefaultFileName();
+        runTransformationPipeline();
+        showStatus('Inputs cleared.');
+    }
+
+    function copyMappedCSVToClipboard() {
+        if (mappedData.length === 0) return;
+        const csvString = generateCSVString(mappedData);
+        navigator.clipboard.writeText(csvString)
+            .then(() => showStatus("Copied mapped CSV to clipboard!"))
+            .catch(() => showStatus("Failed to copy. Check browser permissions."));
+    }
+
+    /* ==========================================
+       MULTI-FORMAT EXPORTER ENGINE
+       ========================================== */
+    function downloadMappedData() {
+        if (mappedData.length === 0) return;
+
+        const format = exportFormatSel.value;
+        let exportName = exportNameInput.value.trim().replace(/[^a-zA-Z0-9_\-]/g, '_');
+        if (!exportName) exportName = 'processed_clinic_data';
+
+        if (format === 'xlsx') {
+            downloadAsExcel(mappedData, `${exportName}.xlsx`);
+        } else {
+            downloadAsCSV(mappedData, `${exportName}.csv`);
+        }
+    }
+
+    function downloadAsCSV(data, fileName) {
+        const csvOutputStr = generateCSVString(data);
+        const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvOutputStr], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        link.setAttribute('href', url);
+        link.setAttribute('download', fileName);
+        link.style.visibility = 'hidden';
+
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        showStatus(`Downloaded "${fileName}"`);
+    }
+
+    function downloadAsExcel(data, fileName) {
+        if (typeof XLSX === 'undefined') {
+            showStatus("Excel library (SheetJS) failed to load. Please check your internet connection.");
+            return;
+        }
+
+        try {
+            // Map JSON array objects to raw key/value arrays matching headers
+            const sheetData = data.map(row => ({
+                'Nome': row.Nome,
+                'Telefone': row.Telefone,
+                'Email': row.Email,
+                'Instagram': row.Instagram,
+                'Etiquetas': row.Etiquetas,
+                'Notas Internas': row.NotasInternas
+            }));
+
+            // Dynamically construct worksheet name: <referenceDate>_<local>_<especialidade>
+            const refDate = refDateInput.value;
+            const chosenEspecialidade = especialidadeSel.value;
+            const chosenLocal = localSel.value;
+
+            const nameParts = [refDate];
+            if (chosenLocal) nameParts.push(chosenLocal);
+            if (chosenEspecialidade) nameParts.push(chosenEspecialidade);
+
+            // Sheet name validation rules: limit to 31 chars & strip illegal characters (\ / ? * : [ ])
+            let dynamicSheetName = nameParts.join('_')
+                .replace(/[\\\/\?\*\:\[\]]/g, '')
+                .substring(0, 31);
+                
+            if (!dynamicSheetName) {
+                dynamicSheetName = "Export";
+            }
+
+            // Build native sheet structures
+            const worksheet = XLSX.utils.json_to_sheet(sheetData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, dynamicSheetName);
+
+            // Write and download xlsx file package
+            XLSX.writeFile(workbook, fileName);
+            showStatus(`Downloaded "${fileName}"`);
+        } catch (err) {
+            showStatus("Error generating Excel file: " + err.message);
+        }
+    }
+</script>
+</body>
+</html>
