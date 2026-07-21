@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSV Transformer</title>
+  <style>
+    :root {
+      --bg: #121212;
+      --card-bg: #1a1a1a;
+      --border: #2e2e2e;
+      --border-focus: #555555;
+      --text: #e0e0e0;
+      --text-muted: #888888;
+      --accent: #ffffff;
+      --accent-dim: #cccccc;
+      --error: #ff5555;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 2rem;
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 900px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1rem;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      padding: 1rem;
+      border-radius: 4px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    input[type="text"],
+    input[type="date"],
+    select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.5rem;
+      font-family: inherit;
+      font-size: 0.9rem;
+      border-radius: 3px;
+      outline: none;
+      transition: border-color 0.15s ease;
+      width: 100%;
+    }
+
+    input[type="text"]:focus,
+    input[type="date"]:focus,
+    select:focus {
+      border-color: var(--border-focus);
+    }
+
+    /* Drop Zone */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 4px;
+      padding: 2.5rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      background: var(--card-bg);
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .drop-zone.dragover {
+      background: #222222;
+      border-color: var(--accent);
+    }
+
+    .drop-zone input[type="file"] {
+      display: none;
+    }
+
+    .drop-zone p {
+      color: var(--text-muted);
+    }
+
+    .drop-zone span {
+      color: var(--accent);
+      text-decoration: underline;
+    }
+
+    /* Preview Table */
+    .preview-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--card-bg);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.8rem;
+    }
+
+    th, td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    th {
+      background: #1f1f1f;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* Actions */
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 1rem;
+    }
+
+    button {
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      padding: 0.75rem 1.5rem;
+      font-weight: 600;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      font-family: inherit;
+    }
+
+    button:hover {
+      background: var(--accent-dim);
+    }
+
+    button:disabled {
+      background: var(--border);
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+
+    .error-msg {
+      color: var(--error);
+      font-size: 0.85rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>CSV Data Transformer</h1>
+      <p class="subtitle">Monochromatic processor for contact list normalization</p>
+    </header>
+
+    <!-- Settings Grid -->
+    <div class="grid">
+      <div class="card field">
+        <label for="refDate">Reference Date (Etiqueta)</label>
+        <input type="date" id="refDate">
+      </div>
+      <div class="card field">
+        <label for="fileName">Export Filename</label>
+        <input type="text" id="fileName" value="converted_contacts.csv" placeholder="filename.csv">
+      </div>
+    </div>
+
+    <!-- Drop Zone -->
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".csv">
+      <p id="dropText">Drag and drop your source CSV here or <span>browse</span></p>
+    </div>
+
+    <div id="errorBox" class="error-msg"></div>
+
+    <!-- Preview -->
+    <div class="preview-container" id="previewSection" style="display: none;">
+      <label>Output Preview (First 5 Rows)</label>
+      <div class="table-wrapper">
+        <table id="previewTable">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Telefone</th>
+              <th>Email</th>
+              <th>Instagram</th>
+              <th>Etiquetas</th>
+              <th>Notas Internas</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="actions">
+        <button id="downloadBtn" disabled>Export CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State management
+    let parsedRows = [];
+    let processedData = [];
+
+    // DOM Elements
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const dropText = document.getElementById('dropText');
+    const refDateInput = document.getElementById('refDate');
+    const fileNameInput = document.getElementById('fileName');
+    const previewSection = document.getElementById('previewSection');
+    const previewTableBody = document.querySelector('#previewTable tbody');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const errorBox = document.getElementById('errorBox');
+
+    // Calculate tomorrow's date relative to current user day
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
+    refDateInput.value = tomorrowStr;
+
+    // Listeners for configuration changes to update output interactively
+    refDateInput.addEventListener('change', () => {
+      if (parsedRows.length > 0) processAndDisplay();
+    });
+
+    // Drag and Drop Handling
+    dropZone.addEventListener('click', () => fileInput.click());
+    
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    downloadBtn.addEventListener('click', triggerDownload);
+
+    // File Handler
+    function handleFile(file) {
+      if (!file.name.endsWith('.csv')) {
+        showError('Invalid file format. Please upload a .csv file.');
+        return;
+      }
+      hideError();
+      dropText.textContent = `Selected: ${file.name}`;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = e.target.result;
+        parseCSV(text);
+      };
+      reader.readAsText(file);
+    }
+
+    // Custom CSV Parser (Handles quotes and varying delimiters natively)
+    function parseCSV(text) {
+      const rows = [];
+      let row = [];
+      let entry = '';
+      let inQuotes = false;
+      let delimiter = null;
+
+      // Clean carriage returns
+      const cleanText = text.replace(/\r/g, '');
+
+      // Detect delimiter on the first line (comma or semicolon)
+      const firstLine = cleanText.split('\n')[0];
+      const commas = (firstLine.match(/,/g) || []).length;
+      const semicolons = (firstLine.match(/;/g) || []).length;
+      delimiter = semicolons > commas ? ';' : ',';
+
+      for (let i = 0; i < cleanText.length; i++) {
+        const char = cleanText[i];
+        const nextChar = cleanText[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') { // Double quotes escape
+            entry += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === delimiter && !inQuotes) {
+          row.push(entry.trim());
+          entry = '';
+        } else if (char === '\n' && !inQuotes) {
+          row.push(entry.trim());
+          if (row.length > 1 || row[0] !== '') {
+            rows.push(row);
+          }
+          row = [];
+          entry = '';
+        } else {
+          entry += char;
+        }
+      }
+      
+      if (entry !== '' || row.length > 0) {
+        row.push(entry.trim());
+        rows.push(row);
+      }
+
+      if (rows.length < 2) {
+        showError('CSV appears to be empty or lacks correct headers.');
+        return;
+      }
+
+      // Extract headers and map indices
+      const originalHeaders = rows[0].map(h => h.trim());
+      const requiredHeaders = ['Nome', 'Telefone', 'Especialidade', 'Unidade'];
+      
+      const missing = requiredHeaders.filter(h => !originalHeaders.includes(h));
+      if (missing.length > 0) {
+        showError(`Missing required columns: ${missing.join(', ')}`);
+        return;
+      }
+
+      // Structure rows into clean objects
+      parsedRows = rows.slice(1).map(r => {
+        const obj = {};
+        originalHeaders.forEach((header, index) => {
+          obj[header] = r[index] || '';
+        });
+        return obj;
+      });
+
+      processAndDisplay();
+    }
+
+    // Phone parsing regex engine to catch tightly packed phone groupings:
+    // (61) 1234-1234(61) 9876-5432 or +55 61 98888 8888, etc.
+    function extractPhones(phoneField) {
+      if (!phoneField) return [];
+      
+      // Matches Brazilian formatting structures
+      const regex = /(?:\+?\d{2,3}[ -]?)?\(?\d{2}\)?[ -]?\d{4,5}[ -]?\d{4}/g;
+      const rawMatches = phoneField.match(regex) || [];
+      
+      // Strict trim and sanity filter to remove parsing noise
+      return rawMatches
+        .map(p => p.replace(/\s+/g, ' ').trim())
+        .filter(p => p.replace(/\D/g, '').length >= 8);
+    }
+
+    // Mapping Engine
+    function processAndDisplay() {
+      const selectedDate = refDateInput.value || tomorrowStr;
+      
+      processedData = parsedRows.map(row => {
+        const phones = extractPhones(row['Telefone']);
+        const primaryPhone = phones[0] || '';
+        
+        // Format remaining numbers with custom requested prefix
+        let fallbackPhones = '';
+        if (phones.length > 1) {
+          fallbackPhones = `Outros telefones: ${phones.slice(1).join(', ')}`;
+        }
+
+        // Escape values containing commas to protect CSV structure
+        const sanitizeTag = (val) => {
+          const clean = (val || '').trim();
+          return clean.includes(',') ? `"${clean}"` : clean;
+        };
+
+        const dateTag = selectedDate;
+        const autoTag = 'Automação';
+        const espTag = sanitizeTag(row['Especialidade']);
+        const uniTag = sanitizeTag(row['Unidade']);
+
+        // Wrap full array in enclosing quotes safely
+        const labels = `"${dateTag}, ${autoTag}, ${espTag}, ${uniTag}"`;
+
+        return {
+          Nome: row['Nome'] || '',
+          Telefone: primaryPhone,
+          Email: '',
+          Instagram: '',
+          Etiquetas: labels,
+          'Notas Internas': fallbackPhones
+        };
+      });
+
+      // Display logic
+      previewTableBody.innerHTML = '';
+      const previewRows = processedData.slice(0, 5);
+
+      previewRows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(row.Nome)}</td>
+          <td>${escapeHtml(row.Telefone)}</td>
+          <td></td>
+          <td></td>
+          <td>${escapeHtml(row.Etiquetas)}</td>
+          <td>${escapeHtml(row['Notas Internas'])}</td>
+        `;
+        previewTableBody.appendChild(tr);
+      });
+
+      previewSection.style.display = 'flex';
+      downloadBtn.disabled = false;
+    }
+
+    // Helper to safely display raw layout structures
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    // CSV Exporter
+    function triggerDownload() {
+      const headers = ['Nome', 'Telefone', 'Email', 'Instagram', 'Etiquetas', 'Notas Internas'];
+      const csvLines = [headers.join(',')];
+
+      processedData.forEach(row => {
+        const line = [
+          escapeCSVField(row.Nome),
+          escapeCSVField(row.Telefone),
+          '', // Email
+          '', // Instagram
+          row.Etiquetas, // Already safely wrapped in quotes with internal commas resolved
+          escapeCSVField(row['Notas Internas'])
+        ];
+        csvLines.push(line.join(','));
+      });
+
+      const csvContent = "\uFEFF" + csvLines.join('\n'); // Add UTF-8 BOM for Excel compatibility
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      
+      let finalFileName = fileNameInput.value.trim();
+      if (!finalFileName.endsWith('.csv')) {
+        finalFileName += '.csv';
+      }
+
+      const link = document.createElement("a");
+      if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", finalFileName);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    }
+
+    // Escaper for raw properties containing commas or quotation marks
+    function escapeCSVField(val) {
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    }
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.style.display = 'block';
+      previewSection.style.display = 'none';
+      downloadBtn.disabled = true;
+    }
+
+    function hideError() {
+      errorBox.style.display = 'none';
+    }
+  </script>
+</body>
+</html>
