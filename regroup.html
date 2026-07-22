@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Reagrupamento</title>
+<style>
+:root {
+    --bg: #0a0a0a; --card: #121212; --border: #262626; --border-focus: #fff;
+    --text: #e5e5e5; --muted: #a3a3a3; --accent: #fff; --dim: #f5f5f5;
+    --sec-bg: #1a1a1a; --sec-hover: #2a2a2a;
+    --success: #4ade80; --error: #f87171;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5;
+    width: 600px; margin: 2rem auto; padding: 1rem;
+}
+h1 { font-size: 1.1rem; font-weight: 700; color: var(--accent); margin-bottom: 1rem; }
+.card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+    padding: 1rem; display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1rem;
+}
+.field { display: flex; flex-direction: column; gap: .35rem; }
+label { font-size: .65rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+input, select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: .4rem; font-family: inherit; font-size: .8rem; border-radius: 4px;
+    outline: none; width: 100%;
+}
+input:focus, select:focus { border-color: var(--border-focus); }
+button {
+    background: var(--accent); color: var(--bg); border: 1px solid var(--accent);
+    border-radius: 4px; padding: .4rem .8rem; font-weight: 600; font-size: .75rem;
+    cursor: pointer; transition: background .15s, border-color .15s;
+}
+button:hover:not(:disabled) { background: var(--dim); border-color: var(--dim); }
+button:disabled { opacity: .25; cursor: not-allowed; }
+button.sec { background: var(--sec-bg); border-color: var(--border); color: var(--text); }
+button.sec:hover:not(:disabled) { background: var(--sec-hover); border-color: var(--muted); }
+.row { display: flex; gap: .75rem; }
+.row .field { flex: 1; }
+.wrap { overflow-x: auto; max-height: 220px; }
+table { width: 100%; border-collapse: collapse; text-align: left; font-size: .75rem; }
+th, td { padding: .5rem .6rem; border-bottom: 1px solid var(--border); }
+th { background: rgba(255,255,255,.02); color: var(--text); font-weight: 600; white-space: nowrap; }
+.empty { padding: 1.5rem; text-align: center; color: var(--muted); }
+.summary { font-size: .75rem; color: var(--muted); text-align: center; }
+.status { text-align: center; min-height: 1.25rem; font-size: .8rem; font-weight: 500; }
+.status-info { color: var(--accent); }
+.status-success { color: var(--success); }
+.status-error { color: var(--error); }
+</style>
+</head>
+<body>
+
+<h1>Reagrupamento</h1>
+
+<div class="card">
+    <div class="field">
+        <label for="fileInput">Arquivo (CSV ou XLSX)</label>
+        <input type="file" id="fileInput" accept=".csv,.xlsx">
+    </div>
+    <div class="field">
+        <label for="groupInput">Nomes dos Grupos (separados por vírgula)</label>
+        <input type="text" id="groupInput" placeholder="10,12,13  ou  manha,tarde">
+    </div>
+    <div style="display:flex;gap:.5rem">
+        <button id="processBtn" class="sec" disabled>Reagrupar</button>
+        <button id="dlCsvBtn" class="sec" disabled>CSV</button>
+        <button id="dlXlsxBtn" disabled>Excel</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="wrap" id="previewContainer">
+        <div class="empty">Carregue um arquivo para visualizar.</div>
+    </div>
+    <div class="summary" id="summary"></div>
+</div>
+
+<div class="status status-info" id="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+/* ---- STATE ---- */
+let originalRows = [];
+let regroupedRows = [];
+let statusTimeout;
+
+/* ---- UI REFS ---- */
+const fileInput = document.getElementById('fileInput');
+const groupInput = document.getElementById('groupInput');
+const processBtn = document.getElementById('processBtn');
+const dlCsvBtn = document.getElementById('dlCsvBtn');
+const dlXlsxBtn = document.getElementById('dlXlsxBtn');
+const previewContainer = document.getElementById('previewContainer');
+const summary = document.getElementById('summary');
+const statusEl = document.getElementById('status');
+
+/* ---- FILE LOAD ---- */
+fileInput.addEventListener('change', () => {
+    processBtn.disabled = !fileInput.files.length;
+    if (fileInput.files.length) {
+        const file = fileInput.files[0];
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === 'xlsx') {
+            const reader = new FileReader();
+            reader.onload = e => loadXLSX(e.target.result);
+            reader.readAsArrayBuffer(file);
+        } else {
+            const reader = new FileReader();
+            reader.onload = e => loadCSV(e.target.result);
+            reader.readAsText(file, 'UTF-8');
+        }
+    }
+});
+
+function loadCSV(text) {
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) { showStatus('CSV deve ter cabeçalho e ao menos uma linha.', 'error'); return; }
+    const headers = parseCSVLine(lines[0]);
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+        const vals = parseCSVLine(lines[i]);
+        if (vals.length >= headers.length) {
+            const obj = {};
+            headers.forEach((h, idx) => obj[h.trim()] = (vals[idx] || '').trim());
+            data.push(obj);
+        }
+    }
+    if (!data.length) { showStatus('Nenhum dado encontrado.', 'error'); return; }
+    originalRows = data;
+    regroupedRows = [];
+    showPreview(originalRows, null);
+    showStatus(`${data.length} registros carregados.`, 'success');
+    checkReady();
+}
+
+function loadXLSX(buffer) {
+    try {
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        if (!data.length) { showStatus('Planilha vazia.', 'error'); return; }
+        originalRows = data;
+        regroupedRows = [];
+        showPreview(originalRows, null);
+        showStatus(`${data.length} registros carregados.`, 'success');
+        checkReady();
+    } catch (e) {
+        showStatus('Erro ao ler XLSX: ' + e.message, 'error');
+    }
+}
+
+function checkReady() {
+    processBtn.disabled = !originalRows.length;
+}
+
+/* ---- REAGROUP ---- */
+processBtn.addEventListener('click', () => {
+    const names = groupInput.value.split(',').map(s => s.trim()).filter(Boolean);
+    if (!names.length) { showStatus('Informe ao menos um nome de grupo.', 'error'); return; }
+    if (names.length > originalRows.length) { showStatus('Mais grupos que registros.', 'error'); return; }
+
+    const size = Math.ceil(originalRows.length / names.length);
+    regroupedRows = originalRows.map((row, i) => {
+        const r = {...row};
+        const tag = formatGroupTag(names[Math.floor(i / size)]);
+        const etq = r.Etiquetas || '';
+        const regex = /,\s*Consulta[^,]*/;
+        if (regex.test(etq)) {
+            r.Etiquetas = etq.replace(regex, `, ${tag}`);
+        } else {
+            r.Etiquetas = etq ? `${etq}, ${tag}` : tag;
+        }
+        return r;
+    });
+
+    showPreview(originalRows, regroupedRows);
+    dlCsvBtn.disabled = false;
+    dlXlsxBtn.disabled = false;
+    showStatus(`${regroupedRows.length} registros reagrupados.`, 'success');
+});
+
+/* ---- PREVIEW ---- */
+function showPreview(orig, regrouped) {
+    previewContainer.innerHTML = '';
+    summary.textContent = '';
+
+    if (!orig.length) {
+        previewContainer.innerHTML = '<div class="empty">Nenhum dado carregado.</div>';
+        return;
+    }
+
+    if (!regrouped) {
+        summary.textContent = `${orig.length} registros carregados.`;
+        return;
+    }
+
+    const names = groupInput.value.split(',').map(s => s.trim()).filter(Boolean);
+    const size = Math.ceil(orig.length / names.length);
+
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    ['Grupo', 'Antes', 'Depois'].forEach(t => {
+        const th = document.createElement('th'); th.textContent = t; hr.appendChild(th);
+    });
+    thead.appendChild(hr);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (let g = 0; g < names.length; g++) {
+        const idx = g * size;
+        if (idx >= orig.length) break;
+        const tr = document.createElement('tr');
+        [formatGroupTag(names[g]), orig[idx].Etiquetas || '—', regrouped[idx].Etiquetas || '—'].forEach(v => {
+            const td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    previewContainer.appendChild(table);
+
+    summary.textContent = `${orig.length} registros · ${names.length} grupos · 1 amostra por grupo`;
+}
+
+/* ---- DOWNLOAD ---- */
+dlCsvBtn.addEventListener('click', () => download('csv'));
+dlXlsxBtn.addEventListener('click', () => download('xlsx'));
+
+function download(format) {
+    if (!regroupedRows.length) return;
+    const headers = Object.keys(regroupedRows[0]);
+    const name = `reagrupado_${new Date().toISOString().slice(0,10)}`;
+
+    if (format === 'xlsx') {
+        const ws = XLSX.utils.json_to_sheet(regroupedRows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Reagrupado');
+        const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([buf], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `${name}.xlsx`; a.click();
+        URL.revokeObjectURL(url);
+    } else {
+        const fieldMap = {};
+        headers.forEach(h => { if (h.includes(' ')) fieldMap[h] = h.replace(/ /g, ''); });
+        const csv = generateCSV(regroupedRows, headers, fieldMap);
+        const blob = new Blob([new Uint8Array([0xEF,0xBB,0xBF]), csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `${name}.csv`; a.click();
+        URL.revokeObjectURL(url);
+    }
+    showStatus(`"${name}" baixado!`, 'success');
+}
+
+/* ---- HELPERS ---- */
+const CRLF = '\r\n';
+
+function escapeField(f) {
+    const str = typeof f === 'string' ? f : String(f ?? '');
+    return `"${str.replace(/"/g, '""')}"`;
+}
+
+function generateCSV(data, headers, fieldMap) {
+    if (!data.length) return '';
+    const rows = [headers.join(',')];
+    data.forEach(row => {
+        rows.push(headers.map(h => escapeField(fieldMap ? row[fieldMap[h] || h] : row[h])).join(','));
+    });
+    return rows.join(CRLF);
+}
+
+function formatGroupTag(name) {
+    if (/^\d+$/.test(name)) return `Consulta${name}h`;
+    return 'Consulta' + name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+}
+
+function parseCSVLine(line) {
+    const result = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (inQ) {
+            if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+            else if (c === '"') inQ = false;
+            else cur += c;
+        } else {
+            if (c === '"') inQ = true;
+            else if (c === ',') { result.push(cur); cur = ''; }
+            else cur += c;
+        }
+    }
+    result.push(cur);
+    return result;
+}
+
+function showStatus(text, type) {
+    clearTimeout(statusTimeout);
+    statusEl.textContent = text;
+    statusEl.className = 'status';
+    if (type) statusEl.classList.add('status-' + type);
+    statusTimeout = setTimeout(() => {
+        if (statusEl.textContent === text) { statusEl.textContent = ''; statusEl.className = 'status'; }
+    }, 4000);
+}
+</script>
+</body>
+</html>
