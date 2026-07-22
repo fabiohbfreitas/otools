@@ -302,15 +302,8 @@
             <input type="text" id="exportNameInput" placeholder="processed_clinic_data">
         </div>
         <div class="field" style="grid-column: span 2;">
-            <label for="groupModeSel">Grouping Mode</label>
-            <select id="groupModeSel">
-                <option value="numbered">Numbered Groups</option>
-                <option value="custom">Custom Named Groups</option>
-            </select>
-        </div>
-        <div class="field" style="grid-column: span 2;">
-            <label for="groupInput">Number of Groups (0 for full download)</label>
-            <input type="number" id="groupInput" min="0" value="0" placeholder="e.g., 4">
+            <label for="groupNamesInput">Group Names (comma-separated, empty = no grouping)</label>
+            <input type="text" id="groupNamesInput" placeholder="10,12,13">
         </div>
     </div>
 

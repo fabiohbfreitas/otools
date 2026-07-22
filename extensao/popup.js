@@ -13,8 +13,7 @@ const refDateInput = document.getElementById('refDate');
 const especialidadeSel = document.getElementById('especialidadeSel');
 const localSel = document.getElementById('localSel');
 const exportNameInput = document.getElementById('exportNameInput');
-const groupModeSel = document.getElementById('groupModeSel');
-const groupInput = document.getElementById('groupInput');
+const groupNamesInput = document.getElementById('groupNamesInput');
 const previewContainer = document.getElementById('previewContainer');
 const statusMsg = document.getElementById('status');
 const loadingContainer = document.getElementById('loadingContainer');
@@ -70,24 +69,6 @@ dlImportedXlsxBtn.addEventListener('click', () => downloadImportedData('xlsx'));
 
 dlTransformedCsvBtn.addEventListener('click', () => downloadTransformedData('csv'));
 dlTransformedXlsxBtn.addEventListener('click', () => downloadTransformedData('xlsx'));
-
-groupModeSel.addEventListener('change', () => {
-    const isCustom = groupModeSel.value === 'custom';
-    const label = document.querySelector('label[for="groupInput"]');
-    if (isCustom) {
-        label.textContent = 'Group Names (comma-separated)';
-        groupInput.type = 'text';
-        groupInput.placeholder = '10,12,13';
-        groupInput.value = '';
-        groupInput.removeAttribute('min');
-    } else {
-        label.textContent = 'Number of Groups (0 for full download)';
-        groupInput.type = 'number';
-        groupInput.placeholder = 'e.g., 4';
-        groupInput.value = '0';
-        groupInput.min = '0';
-    }
-});
 
 /* ==========================================
    DOM SCRAPER & FRAME INJECTOR (UNIVERSAL)
@@ -429,36 +410,20 @@ function downloadRawData(format) {
 function downloadImportedData(format) {
     if (importedData.length === 0) return;
 
-    const isCustom = groupModeSel.value === 'custom';
     const filenameBase = `${getFileName()}_IMPORTED`;
-
     let finalDataset = importedData.map(row => ({...row}));
 
-    if (isCustom) {
-        const rawNames = groupInput.value.split(',').map(s => s.trim()).filter(Boolean);
-        if (rawNames.length > 0 && rawNames.length <= finalDataset.length) {
-            const totalRecords = finalDataset.length;
-            const groupSize = Math.ceil(totalRecords / rawNames.length);
+    const rawNames = groupNamesInput.value.split(',').map(s => s.trim()).filter(Boolean);
+    if (rawNames.length > 0 && rawNames.length <= finalDataset.length) {
+        const totalRecords = finalDataset.length;
+        const groupSize = Math.ceil(totalRecords / rawNames.length);
 
-            finalDataset = finalDataset.map((row, index) => {
-                const groupIndex = Math.floor(index / groupSize);
-                const tag = `Consulta${rawNames[groupIndex]}h`;
-                row.Etiquetas = row.Etiquetas ? `${row.Etiquetas}, ${tag}` : tag;
-                return row;
-            });
-        }
-    } else {
-        const requestedGroups = parseInt(groupInput.value, 10) || 0;
-        if (requestedGroups > 0 && requestedGroups <= finalDataset.length) {
-            const totalRecords = finalDataset.length;
-            const groupSize = Math.ceil(totalRecords / requestedGroups);
-
-            finalDataset = finalDataset.map((row, index) => {
-                const groupNumber = Math.floor(index / groupSize) + 1;
-                row.Etiquetas = row.Etiquetas ? `${row.Etiquetas}, Grupo${groupNumber}` : `Grupo${groupNumber}`;
-                return row;
-            });
-        }
+        finalDataset = finalDataset.map((row, index) => {
+            const groupIndex = Math.floor(index / groupSize);
+            const tag = `Consulta${rawNames[groupIndex]}h`;
+            row.Etiquetas = row.Etiquetas ? `${row.Etiquetas}, ${tag}` : tag;
+            return row;
+        });
     }
 
     triggerImportedFileSave(finalDataset, filenameBase, format);
