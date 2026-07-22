@@ -83,12 +83,12 @@ async function scrapeActivePageTable() {
     }, (results) => {
         if (chrome.runtime.lastError) {
             toggleLoading(false);
-            showStatus("Script injection failed: " + chrome.runtime.lastError.message);
+            showStatus("Falha na injeção: " + chrome.runtime.lastError.message, 'error');
             return;
         }
         if (!results || results.length === 0) {
             toggleLoading(false);
-            showStatus("Error: No responses received from page frames.");
+            showStatus("Nenhuma resposta recebida das páginas.", 'error');
             return;
         }
 
@@ -115,9 +115,9 @@ async function scrapeActivePageTable() {
             rawTableHTML = foundMainHTML;
             processRawHTML(foundMainHTML);
             copyHtmlBtn.disabled = false;
-            showStatus("Data synced perfectly from page context!");
+            showStatus("Dados sincronizados com sucesso!", 'success');
         } else {
-            showStatus("Error: Core table layout with id='tblImpressao' not found.");
+            showStatus("Tabela principal não encontrada.", 'error');
         }
         toggleLoading(false);
     });
@@ -126,8 +126,8 @@ async function scrapeActivePageTable() {
 function copyRawHtmlToClipboard() {
     if (!rawTableHTML) return;
     navigator.clipboard.writeText(rawTableHTML)
-        .then(() => showStatus("Pristine HTML copied to clipboard!"))
-        .catch(() => showStatus("Failed to copy HTML framework."));
+        .then(() => showStatus("HTML copiado para área de transferência!", 'success'))
+        .catch(() => showStatus("Falha ao copiar HTML.", 'error'));
 }
 
 /* ==========================================
@@ -395,12 +395,12 @@ function downloadAsCSV(csvOutputStr, fileName) {
     link.click();
     URL.revokeObjectURL(url);
     
-    showStatus(`Downloaded "${fileName}"`);
+    showStatus(`"${fileName}" baixado!`, 'success');
 }
 
 function downloadAsExcel(sheetData, fileName) {
     if (typeof XLSX === 'undefined') {
-        showStatus("SheetJS failed to compile dynamic Excel formats.");
+        showStatus("Falha ao gerar arquivo Excel.", 'error');
         return;
     }
 
@@ -430,9 +430,9 @@ function downloadAsExcel(sheetData, fileName) {
         link.click();
         URL.revokeObjectURL(url);
 
-        showStatus(`Downloaded "${fileName}"`);
+        showStatus(`"${fileName}" baixado!`, 'success');
     } catch (err) {
-        showStatus("XLSX error compiled context: " + err.message);
+        showStatus("Erro no Excel: " + err.message, 'error');
     }
 }
 
@@ -458,11 +458,13 @@ function toggleLoading(visible) {
     loadingContainer.classList.toggle('visible', visible);
 }
 
-function showStatus(text) {
+function showStatus(text, type) {
     clearTimeout(statusTimeout);
     statusMsg.textContent = text;
+    statusMsg.className = 'status';
+    if (type) statusMsg.classList.add('status-' + type);
     statusTimeout = setTimeout(() => {
-        if (statusMsg.textContent === text) statusMsg.textContent = '';
+        if (statusMsg.textContent === text) { statusMsg.textContent = ''; statusMsg.className = 'status'; }
     }, 4000);
 }
 

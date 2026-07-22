@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Data Utility Console</title>
+    <title>Utilitário de Dados</title>
     <style>
         :root {
             --bg-color: #0a0a0a;
@@ -231,7 +231,10 @@
             font-size: 0.8rem;
             font-weight: 500;
             color: var(--accent);
+            transition: color 0.2s;
         }
+        .status-success { color: #4ade80; }
+        .status-error { color: #f87171; }
 
         /* Loading Spinner */
         .spinner-container {
@@ -261,13 +264,13 @@
 
 <div class="container">
     <header>
-        <h1>Data Utility Console</h1>
+        <h1>Utilitário de Dados</h1>
         <div class="header-actions">
             <button id="copyHtmlBtn" class="btn secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" disabled>
-                📋 Copy HTML
+                📋 Copiar HTML
             </button>
             <button id="refreshBtn" class="btn secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">
-                🔄 Refresh
+                🔄 Atualizar
             </button>
         </div>
     </header>
@@ -275,7 +278,7 @@
     <!-- Global Configurations -->
     <div class="config-grid">
         <div class="field">
-            <label for="refDate">Reference Date</label>
+            <label for="refDate">Data da Consulta</label>
             <input type="date" id="refDate">
         </div>
         <div class="field">
@@ -285,7 +288,7 @@
                 <option value="Cardiologia">Cardiologia</option>
                 <option value="Otorrinolaringologia">Otorrinolaringologia</option>
                 <option value="Ginecologia">Ginecologia</option>
-                <option value="">(None)</option>
+                <option value="">(Nenhum)</option>
             </select>
         </div>
         <div class="field">
@@ -294,24 +297,24 @@
                 <option value="Samambaia">Samambaia</option>
                 <option value="Gama">Gama</option>
                 <option value="Sobradinho">Sobradinho</option>
-                <option value="">(None)</option>
+                <option value="">(Nenhum)</option>
             </select>
         </div>
         <div class="field">
-            <label for="exportNameInput">Export Name</label>
-            <input type="text" id="exportNameInput" placeholder="processed_clinic_data">
+            <label for="exportNameInput">Nome do Arquivo</label>
+            <input type="text" id="exportNameInput" placeholder="dados_processados">
         </div>
         <div class="field" style="grid-column: span 2;">
-            <label for="groupNamesInput">Group Names (comma-separated, empty = no grouping)</label>
+            <label for="groupNamesInput">Nomes dos Grupos (separados por vírgula, vazio = sem grupo)</label>
             <input type="text" id="groupNamesInput" placeholder="10,12,13">
         </div>
     </div>
 
     <!-- Single Export Action -->
     <div class="card">
-        <div class="card-title">Export</div>
+        <div class="card-title">Exportar</div>
         <div class="export-row">
-            <span class="export-label">Imported System Data</span>
+            <span class="export-label">Dados para Importação</span>
             <div class="export-buttons">
                 <button id="dlImportedCsvBtn" class="btn secondary" disabled>CSV</button>
                 <button id="dlImportedXlsxBtn" class="btn" disabled>Excel</button>
@@ -323,7 +326,7 @@
     <div class="status-container">
         <div id="loadingContainer" class="spinner-container">
             <div class="spinner"></div>
-            <span class="status">Scanning frames...</span>
+            <span class="status">Buscando tabelas...</span>
         </div>
         <span id="status" class="status"></span>
     </div>
