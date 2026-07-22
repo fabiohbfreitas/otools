@@ -1,11 +1,9 @@
 /* ==========================================
    GLOBAL STATE & CONTROLS
    ========================================== */
-let rawTableHTML = "";       // Stores pristine, un-parsed HTML string
-let rawSourceRows = [];      // Extracted structural JSON mapping of raw table elements
+let rawTableHTML = "";
 let parsedSourceRows = [];   // Standardized structural rows
 let importedData = [];       // WhatsApp-optimized pipeline output
-let transformedData = [];    // New 8-column pipeline output
 let statusTimeout;
 
 // UI Targets
@@ -14,18 +12,13 @@ const especialidadeSel = document.getElementById('especialidadeSel');
 const localSel = document.getElementById('localSel');
 const exportNameInput = document.getElementById('exportNameInput');
 const groupNamesInput = document.getElementById('groupNamesInput');
-const previewContainer = document.getElementById('previewContainer');
 const statusMsg = document.getElementById('status');
 const loadingContainer = document.getElementById('loadingContainer');
 
 const refreshBtn = document.getElementById('refreshBtn');
 const copyHtmlBtn = document.getElementById('copyHtmlBtn');
-const dlRawCsvBtn = document.getElementById('dlRawCsvBtn');
-const dlRawXlsxBtn = document.getElementById('dlRawXlsxBtn');
 const dlImportedCsvBtn = document.getElementById('dlImportedCsvBtn');
 const dlImportedXlsxBtn = document.getElementById('dlImportedXlsxBtn');
-const dlTransformedCsvBtn = document.getElementById('dlTransformedCsvBtn');
-const dlTransformedXlsxBtn = document.getElementById('dlTransformedXlsxBtn');
 
 /* ==========================================
    BUSINESS CONFIGURATION
@@ -61,14 +54,8 @@ refDateInput.addEventListener('change', () => { updateDefaultFileName(); runAllP
 especialidadeSel.addEventListener('change', () => { updateDefaultFileName(); runAllPipelines(); });
 localSel.addEventListener('change', () => { updateDefaultFileName(); runAllPipelines(); });
 
-dlRawCsvBtn.addEventListener('click', () => downloadRawData('csv'));
-dlRawXlsxBtn.addEventListener('click', () => downloadRawData('xlsx'));
-
 dlImportedCsvBtn.addEventListener('click', () => downloadImportedData('csv'));
 dlImportedXlsxBtn.addEventListener('click', () => downloadImportedData('xlsx'));
-
-dlTransformedCsvBtn.addEventListener('click', () => downloadTransformedData('csv'));
-dlTransformedXlsxBtn.addEventListener('click', () => downloadTransformedData('xlsx'));
 
 /* ==========================================
    DOM SCRAPER & FRAME INJECTOR (UNIVERSAL)
@@ -126,13 +113,11 @@ async function scrapeActivePageTable() {
         // 2. Process core data table pipeline
         if (foundMainHTML) {
             rawTableHTML = foundMainHTML;
-            processRawHTML(rawTableHTML);
+            processRawHTML(foundMainHTML);
             copyHtmlBtn.disabled = false;
             showStatus("Data synced perfectly from page context!");
         } else {
             showStatus("Error: Core table layout with id='tblImpressao' not found.");
-            copyHtmlBtn.disabled = true;
-            toggleActionButtons(false);
         }
         toggleLoading(false);
     });
@@ -219,7 +204,7 @@ function processRawHTML(htmlString) {
     if (!table) return;
 
     const rows = table.querySelectorAll('tr');
-    rawSourceRows = [];
+    const rawSourceRows = [];
     let detectedHeaders = [];
 
     rows.forEach((row, rowIndex) => {
@@ -285,9 +270,8 @@ function extractPhones(phoneStr) {
 function runAllPipelines() {
     if (parsedSourceRows.length === 0) {
         importedData = [];
-        transformedData = [];
-        renderPreview(transformedData);
-        toggleActionButtons(false);
+        dlImportedCsvBtn.disabled = true;
+        dlImportedXlsxBtn.disabled = true;
         return;
     }
 
@@ -334,79 +318,13 @@ function runAllPipelines() {
         };
     });
 
-    // 2. Generate "Transformed" Dataset (8-column Brazilian schema with native dates)
-    transformedData = parsedSourceRows.map(row => {
-        const nome = row.Nome ? row.Nome.trim() : '';
-        const allPhonesParsed = extractPhones(row.Telefones).join(', ');
-        const formattedDate = formatToBrazilianDate(refDate);
-
-        return {
-            Paciente: nome,
-            Telefone: allPhonesParsed,
-            Data: formattedDate,
-            Horário: '',
-            Unidade: chosenLocal,
-            Especialidade: chosenEspecialidade,
-            Situação: 'a confirmar',
-            Observação: ''
-        };
-    });
-
-    renderPreview(importedData);
-    toggleActionButtons(true);
-}
-
-function renderPreview(data) {
-    previewContainer.innerHTML = '';
-    if (data.length === 0) {
-        const emptyState = document.createElement('div');
-        emptyState.className = 'empty-state';
-        emptyState.textContent = 'No active preview data. Scan table to render pipeline logs.';
-        previewContainer.appendChild(emptyState);
-        return;
-    }
-
-    const previewRows = data.slice(0, 3);
-    const table = document.createElement('table');
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-    ['Nome', 'Telefone', 'Etiquetas', 'Notas Internas'].forEach(text => {
-        const th = document.createElement('th');
-        th.textContent = text;
-        headerRow.appendChild(th);
-    });
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    previewRows.forEach(row => {
-        const tr = document.createElement('tr');
-        [row.Nome, row.Telefone, row.Etiquetas, row.NotasInternas || '—'].forEach(val => {
-            const td = document.createElement('td');
-            td.textContent = val;
-            tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    previewContainer.appendChild(table);
+    dlImportedCsvBtn.disabled = false;
+    dlImportedXlsxBtn.disabled = false;
 }
 
 /* ==========================================
    DOWNLOAD WRAPPERS & CONSOLIDATED GROUPING LOGIC
    ========================================== */
-function downloadRawData(format) {
-    if (rawSourceRows.length === 0) return;
-    const filenameBase = `${getFileName()}_RAW`;
-
-    if (format === 'xlsx') {
-        downloadAsExcel(rawSourceRows, `${filenameBase}.xlsx`);
-    } else {
-        const csvString = generateCSV(rawSourceRows, Object.keys(rawSourceRows[0] || {}));
-        downloadAsCSV(csvString, `${filenameBase}.csv`);
-    }
-}
-
 function downloadImportedData(format) {
     if (importedData.length === 0) return;
 
@@ -445,29 +363,6 @@ function triggerImportedFileSave(dataset, filename, format) {
         const importedFieldMap = { 'Notas Internas': 'NotasInternas' };
         const csvString = generateCSV(dataset, importedHeaders, importedFieldMap);
         downloadAsCSV(csvString, `${filename}.csv`);
-    }
-}
-
-function downloadTransformedData(format) {
-    if (transformedData.length === 0) return;
-    const filenameBase = `${getFileName()}_TRANSFORMED`;
-
-    if (format === 'xlsx') {
-        const structuredXlsx = transformedData.map(row => ({
-            'Paciente': row.Paciente,
-            'Telefone': row.Telefone,
-            'Data': row.Data,
-            'Horário': row.Horário,
-            'Unidade': row.Unidade,
-            'Especialidade': row.Especialidade,
-            'Situação': row.Situação,
-            'Observação': row.Observação
-        }));
-        downloadAsExcel(structuredXlsx, `${filenameBase}.xlsx`);
-    } else {
-        const transformedHeaders = ['Paciente', 'Telefone', 'Data', 'Horário', 'Unidade', 'Especialidade', 'Situação', 'Observação'];
-        const csvString = generateCSV(transformedData, transformedHeaders);
-        downloadAsCSV(csvString, `${filenameBase}.csv`);
     }
 }
 
@@ -563,31 +458,12 @@ function toggleLoading(visible) {
     loadingContainer.classList.toggle('visible', visible);
 }
 
-function toggleActionButtons(enable) {
-    dlRawCsvBtn.disabled = !enable;
-    dlRawXlsxBtn.disabled = !enable;
-    dlImportedCsvBtn.disabled = !enable;
-    dlImportedXlsxBtn.disabled = !enable;
-    dlTransformedCsvBtn.disabled = !enable;
-    dlTransformedXlsxBtn.disabled = !enable;
-}
-
 function showStatus(text) {
     clearTimeout(statusTimeout);
     statusMsg.textContent = text;
     statusTimeout = setTimeout(() => {
         if (statusMsg.textContent === text) statusMsg.textContent = '';
     }, 4000);
-}
-
-function escapeHtml(str) {
-    if (!str) return '';
-    return str
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
 }
 
 function formatToBrazilianDate(dateStr) {
