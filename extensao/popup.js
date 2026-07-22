@@ -338,7 +338,7 @@ function downloadImportedData(format) {
 
         finalDataset = finalDataset.map((row, index) => {
             const groupIndex = Math.floor(index / groupSize);
-            const tag = `Consulta${rawNames[groupIndex]}h`;
+            const tag = formatGroupTag(rawNames[groupIndex]);
             row.Etiquetas = row.Etiquetas ? `${row.Etiquetas}, ${tag}` : tag;
             return row;
         });
@@ -482,4 +482,9 @@ function getNextBusinessDay(date) {
         next.setDate(next.getDate() + 1);
     }
     return next;
+}
+
+function formatGroupTag(name) {
+    if (/^\d+$/.test(name)) return `Consulta${name}h`;
+    return 'Consulta' + name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
 }
