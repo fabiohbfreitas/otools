@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CSV → WhatsApp Import</title>
+<style>
+:root {
+    --bg: #0a0a0a; --card: #121212; --border: #262626; --border-focus: #ffffff;
+    --text: #e5e5e5; --muted: #a3a3a3; --accent: #ffffff; --dim: #f5f5f5;
+    --sec-bg: #1a1a1a; --sec-hover: #2a2a2a;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5;
+    width: 520px; margin: 2rem auto; padding: 1rem;
+}
+h1 { font-size: 1.1rem; font-weight: 700; color: var(--accent); margin-bottom: 1rem; }
+.card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+    padding: 1rem; display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1rem;
+}
+.field { display: flex; flex-direction: column; gap: .35rem; }
+label { font-size: .65rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+input, select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: .4rem; font-family: inherit; font-size: .8rem; border-radius: 4px;
+    outline: none; width: 100%;
+}
+input:focus, select:focus { border-color: var(--border-focus); }
+button {
+    background: var(--accent); color: var(--bg); border: 1px solid var(--accent);
+    border-radius: 4px; padding: .4rem .8rem; font-weight: 600; font-size: .75rem;
+    cursor: pointer; transition: background .15s, border-color .15s;
+}
+button:hover:not(:disabled) { background: var(--dim); border-color: var(--dim); }
+button:disabled { opacity: .25; cursor: not-allowed; }
+button.sec { background: var(--sec-bg); border-color: var(--border); color: var(--text); }
+button.sec:hover:not(:disabled) { background: var(--sec-hover); border-color: var(--muted); }
+.row { display: flex; gap: .75rem; }
+.row .field { flex: 1; }
+.table-panel { border: 1px solid var(--border); background: var(--card); border-radius: 4px; overflow: hidden; }
+.wrap { overflow-x: auto; max-height: 160px; }
+table { width: 100%; border-collapse: collapse; text-align: left; }
+th, td { padding: .5rem .75rem; border-bottom: 1px solid var(--border); font-size: .75rem; }
+th { background: rgba(255,255,255,.02); color: var(--text); font-weight: 600; white-space: nowrap; }
+.empty { padding: 1.5rem; text-align: center; color: var(--muted); font-size: .8rem; }
+.status { text-align: center; min-height: 1.25rem; font-size: .8rem; font-weight: 500; color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>CSV → WhatsApp Import</h1>
+
+<div class="card">
+    <div class="field">
+        <label for="csvFile">CSV File</label>
+        <input type="file" id="csvFile" accept=".csv">
+    </div>
+    <div class="row">
+        <div class="field">
+            <label for="refDate">Reference Date</label>
+            <input type="date" id="refDate">
+        </div>
+        <div class="field">
+            <label for="localInput">Local</label>
+            <input type="text" id="localInput" placeholder="Detected from CSV">
+        </div>
+    </div>
+    <div class="row">
+        <div class="field">
+            <label for="especInput">Especialidade</label>
+            <input type="text" id="especInput" placeholder="Detected from CSV">
+        </div>
+        <div class="field">
+            <label for="groupNames">Group Names (comma-separated)</label>
+            <input type="text" id="groupNames" placeholder="10,12,13">
+        </div>
+    </div>
+    <button id="processBtn" disabled>Process &amp; Preview</button>
+</div>
+
+<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Preview</span>
+        <span id="rowCount" style="font-size:.75rem;color:var(--muted)"></span>
+    </div>
+    <div class="table-panel">
+        <div class="wrap" id="previewContainer">
+            <div class="empty">Load a CSV to preview the processed data.</div>
+        </div>
+    </div>
+</div>
+
+<div style="display:flex;gap:.5rem;justify-content:center">
+    <button id="dlCsvBtn" class="sec" disabled>Download CSV</button>
+</div>
+
+<div class="status" id="status"></div>
+
+<script>
+/* ---- STATE ---- */
+let processedData = [];
+let statusTimeout;
+
+/* ---- UI REFS ---- */
+const csvFile = document.getElementById('csvFile');
+const refDate = document.getElementById('refDate');
+const localInput = document.getElementById('localInput');
+const especInput = document.getElementById('especInput');
+const groupNames = document.getElementById('groupNames');
+const processBtn = document.getElementById('processBtn');
+const previewContainer = document.getElementById('previewContainer');
+const rowCount = document.getElementById('rowCount');
+const dlCsvBtn = document.getElementById('dlCsvBtn');
+const statusEl = document.getElementById('status');
+
+/* ---- INIT ---- */
+const today = new Date();
+const next = new Date(today);
+next.setDate(next.getDate() + 1);
+while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
+refDate.value = next.toISOString().split('T')[0];
+
+/* ---- FILE LOAD ---- */
+csvFile.addEventListener('change', () => {
+    processBtn.disabled = !csvFile.files.length;
+    if (csvFile.files.length) showStatus(`Selected: ${csvFile.files[0].name}`);
+});
+
+/* ---- PROCESS ---- */
+processBtn.addEventListener('click', () => {
+    const file = csvFile.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => processCSV(e.target.result);
+    reader.readAsText(file, 'UTF-8');
+});
+
+function processCSV(text) {
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) { showStatus('CSV must have a header row and at least one data row.'); return; }
+
+    const headers = parseCSVLine(lines[0]);
+    const idxMap = {};
+    const expected = ['N°','UNIDADE','ESPECIALIDADE','CONSULTA','PACIENTE','CPF','PRESCRIÇÃO','OCI','RM','RX','TELEFONE'];
+    for (const h of expected) {
+        const found = headers.findIndex((c, i) => c.trim().toUpperCase() === h || (h === 'N°' && c.trim() === 'N°'));
+        if (found === -1) { showStatus(`Column "${h}" not found in CSV.`); return; }
+        idxMap[h] = found;
+    }
+
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+        const vals = parseCSVLine(lines[i]);
+        if (vals.length < headers.length) continue;
+        rows.push({
+            unidade: vals[idxMap['UNIDADE']].trim(),
+            especialidade: vals[idxMap['ESPECIALIDADE']].trim(),
+            paciente: vals[idxMap['PACIENTE']].trim(),
+            telefone: vals[idxMap['TELEFONE']].trim()
+        });
+    }
+    if (!rows.length) { showStatus('No data rows found.'); return; }
+
+    /* Auto-detect local and especialidade from data */
+    const unidadeSet = [...new Set(rows.map(r => r.unidade).filter(Boolean))];
+    const especSet = [...new Set(rows.map(r => r.especialidade).filter(Boolean))];
+    if (unidadeSet.length === 1 && !localInput.value) localInput.value = unidadeSet[0];
+    if (especSet.length === 1 && !especInput.value) especInput.value = especSet[0];
+
+    const chosenLocal = localInput.value.trim();
+    const chosenEspec = especInput.value.trim();
+    const dateVal = refDate.value;
+    const labels = [dateVal, 'Automação'];
+    if (chosenLocal) labels.push(chosenLocal);
+    if (chosenEspec) labels.push(chosenEspec);
+    const etiquetasBase = labels.join(', ');
+
+    processedData = rows.map(r => {
+        const phones = extractPhones(r.telefone);
+        const targetIdx = phones.findIndex(p => {
+            const d = p.replace(/\D/g, '').substring(2);
+            return d.length === 9 && d.startsWith('9');
+        });
+        const chosenPhone = targetIdx !== -1 ? phones[targetIdx] : (phones[0] || '');
+        const remaining = phones.filter((_, i) => i !== targetIdx).join(', ');
+
+        return {
+            Nome: r.paciente,
+            Telefone: chosenPhone,
+            Email: '',
+            Instagram: '',
+            Etiquetas: etiquetasBase,
+            NotasInternas: remaining ? `Outros telefones: ${remaining}` : ''
+        };
+    });
+
+    /* Grouping */
+    const names = groupNames.value.split(',').map(s => s.trim()).filter(Boolean);
+    if (names.length > 0 && names.length <= processedData.length) {
+        const size = Math.ceil(processedData.length / names.length);
+        processedData = processedData.map((row, i) => {
+            const gIdx = Math.floor(i / size);
+            const tag = `Consulta${names[gIdx]}h`;
+            row.Etiquetas = row.Etiquetas ? `${row.Etiquetas}, ${tag}` : tag;
+            return row;
+        });
+    }
+
+    renderPreview(processedData);
+    dlCsvBtn.disabled = false;
+    rowCount.textContent = `${processedData.length} rows`;
+    showStatus(`Processed ${processedData.length} records.`);
+}
+
+/* ---- PREVIEW ---- */
+function renderPreview(data) {
+    previewContainer.innerHTML = '';
+    if (!data.length) {
+        const div = document.createElement('div');
+        div.className = 'empty';
+        div.textContent = 'No data to preview.';
+        previewContainer.appendChild(div);
+        return;
+    }
+
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const hRow = document.createElement('tr');
+    ['Nome', 'Telefone', 'Etiquetas', 'Notas Internas'].forEach(t => {
+        const th = document.createElement('th');
+        th.textContent = t;
+        hRow.appendChild(th);
+    });
+    thead.appendChild(hRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    data.slice(0, 5).forEach(row => {
+        const tr = document.createElement('tr');
+        [row.Nome, row.Telefone, row.Etiquetas, row.NotasInternas || '—'].forEach(v => {
+            const td = document.createElement('td');
+            td.textContent = v;
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    previewContainer.appendChild(table);
+}
+
+/* ---- DOWNLOAD ---- */
+dlCsvBtn.addEventListener('click', () => {
+    const headers = ['Nome', 'Telefone', 'Email', 'Instagram', 'Etiquetas', 'Notas Internas'];
+    const fieldMap = { 'Notas Internas': 'NotasInternas' };
+    const csv = generateCSV(processedData, headers, fieldMap);
+    const name = `whatsapp_import_${refDate.value}.csv`;
+    downloadAsCSV(csv, name);
+    showStatus(`Downloaded ${name}`);
+});
+
+/* ---- CORE FUNCTIONS (ported from popup.js) ---- */
+const CRLF = '\r\n';
+
+function escapeField(f) {
+    const str = typeof f === 'string' ? f : String(f ?? '');
+    return `"${str.replace(/"/g, '""')}"`;
+}
+
+function generateCSV(data, headers, fieldMap) {
+    if (!data.length) return '';
+    const rows = [headers.join(',')];
+    data.forEach(row => {
+        rows.push(headers.map(h => escapeField(fieldMap ? row[fieldMap[h] || h] : row[h])).join(','));
+    });
+    return rows.join(CRLF);
+}
+
+function downloadAsCSV(str, name) {
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), str], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; a.click();
+    URL.revokeObjectURL(url);
+}
+
+function extractPhones(phoneStr) {
+    if (!phoneStr) return [];
+    const regex = /(?:\(?\d{2}\)?\s?\d{4,5}-?\d{4})/g;
+    const matches = phoneStr.match(regex) || [];
+    return matches.map(num => {
+        const cleaned = num.replace(/\D/g, '');
+        if (cleaned.length === 11) return `(${cleaned.slice(0,2)}) ${cleaned.slice(2,7)}-${cleaned.slice(7)}`;
+        if (cleaned.length === 10) return `(${cleaned.slice(0,2)}) ${cleaned.slice(2,6)}-${cleaned.slice(6)}`;
+        return num.trim();
+    });
+}
+
+function showStatus(text) {
+    clearTimeout(statusTimeout);
+    statusEl.textContent = text;
+    statusTimeout = setTimeout(() => {
+        if (statusEl.textContent === text) statusEl.textContent = '';
+    }, 4000);
+}
+
+function parseCSVLine(line) {
+    const result = [];
+    let cur = '';
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (inQ) {
+            if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+            else if (c === '"') inQ = false;
+            else cur += c;
+        } else {
+            if (c === '"') inQ = true;
+            else if (c === ',') { result.push(cur); cur = ''; }
+            else cur += c;
+        }
+    }
+    result.push(cur);
+    return result;
+}
+</script>
+</body>
+</html>
