@@ -328,7 +328,7 @@ function runAllPipelines() {
 function downloadImportedData(format) {
     if (importedData.length === 0) return;
 
-    const filenameBase = `${getFileName()}_IMPORTED`;
+    const filenameBase = getFileName();
     let finalDataset = importedData.map(row => ({...row}));
 
     const rawNames = groupNamesInput.value.split(',').map(s => s.trim()).filter(Boolean);
