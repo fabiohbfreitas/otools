@@ -4,6 +4,7 @@
 let rawTableHTML = "";
 let parsedSourceRows = [];   // Standardized structural rows
 let importedData = [];       // WhatsApp-optimized pipeline output
+let transformedData = [];    // 8-column structured output
 let statusTimeout;
 
 // UI Targets
@@ -19,6 +20,7 @@ const refreshBtn = document.getElementById('refreshBtn');
 const copyHtmlBtn = document.getElementById('copyHtmlBtn');
 const dlImportedCsvBtn = document.getElementById('dlImportedCsvBtn');
 const dlImportedXlsxBtn = document.getElementById('dlImportedXlsxBtn');
+const dlTransformedXlsxBtn = document.getElementById('dlTransformedXlsxBtn');
 
 /* ==========================================
    BUSINESS CONFIGURATION
@@ -56,6 +58,7 @@ localSel.addEventListener('change', () => { updateDefaultFileName(); runAllPipel
 
 dlImportedCsvBtn.addEventListener('click', () => downloadImportedData('csv'));
 dlImportedXlsxBtn.addEventListener('click', () => downloadImportedData('xlsx'));
+dlTransformedXlsxBtn.addEventListener('click', () => downloadTransformedData());
 
 /* ==========================================
    DOM SCRAPER & FRAME INJECTOR (UNIVERSAL)
@@ -270,8 +273,10 @@ function extractPhones(phoneStr) {
 function runAllPipelines() {
     if (parsedSourceRows.length === 0) {
         importedData = [];
+        transformedData = [];
         dlImportedCsvBtn.disabled = true;
         dlImportedXlsxBtn.disabled = true;
+        dlTransformedXlsxBtn.disabled = true;
         return;
     }
 
@@ -318,8 +323,27 @@ function runAllPipelines() {
         };
     });
 
+    // 2. Generate "Transformed" Dataset (8-column structured)
+    transformedData = parsedSourceRows.map(row => {
+        const nome = row.Nome ? row.Nome.trim() : '';
+        const allPhonesParsed = extractPhones(row.Telefones).join(', ');
+        const formattedDate = formatToBrazilianDate(refDate);
+
+        return {
+            Paciente: nome,
+            Telefone: allPhonesParsed,
+            Data: formattedDate,
+            Horário: '',
+            Unidade: chosenLocal,
+            Especialidade: chosenEspecialidade,
+            Situação: 'a confirmar',
+            Observação: ''
+        };
+    });
+
     dlImportedCsvBtn.disabled = false;
     dlImportedXlsxBtn.disabled = false;
+    dlTransformedXlsxBtn.disabled = false;
 }
 
 /* ==========================================
@@ -364,6 +388,22 @@ function triggerImportedFileSave(dataset, filename, format) {
         const csvString = generateCSV(dataset, importedHeaders, importedFieldMap);
         downloadAsCSV(csvString, `${filename}.csv`);
     }
+}
+
+function downloadTransformedData() {
+    if (transformedData.length === 0) return;
+    const filenameBase = getFileName();
+    const structured = transformedData.map(row => ({
+        'Paciente': row.Paciente,
+        'Telefone': row.Telefone,
+        'Data': row.Data,
+        'Horário': row.Horário,
+        'Unidade': row.Unidade,
+        'Especialidade': row.Especialidade,
+        'Situação': row.Situação,
+        'Observação': row.Observação
+    }));
+    downloadAsExcel(structured, `${filenameBase}_ESTRUTURADO.xlsx`);
 }
 
 /* ==========================================

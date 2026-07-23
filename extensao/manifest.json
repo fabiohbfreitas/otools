@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Table Data Utility",
+  "name": "Extração de Dados (SISREGIII)",
   "version": "1.0",
-  "description": "Extracts, transforms, and exports tables with id='tblImpressao' instantly.",
+  "description": "Extrai, transforma e exporta dados do SISREGIII.",
   "permissions": [
     "activeTab",
     "scripting"
