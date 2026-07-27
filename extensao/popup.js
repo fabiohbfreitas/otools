@@ -525,6 +525,6 @@ function getNextBusinessDay(date) {
 }
 
 function formatGroupTag(name) {
-    if (/^\d+$/.test(name)) return `Consulta${name}h`;
+    if (/^\d+$/.test(name)) return `Consulta${name.padStart(2, '0')}h`;
     return 'Consulta' + name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
 }
