@@ -232,11 +232,12 @@ dlXlsxBtn.addEventListener('click', () => download('xlsx'));
 
 function download(format) {
     if (!regroupedRows.length) return;
-    const headers = Object.keys(regroupedRows[0]);
+    const headers = Object.keys(regroupedRows[0]).filter(h => h !== 'Email' && h !== 'Instagram');
     const name = `reagrupado_${new Date().toISOString().slice(0,10)}`;
 
     if (format === 'xlsx') {
-        const ws = XLSX.utils.json_to_sheet(regroupedRows);
+        const clean = regroupedRows.map(({Email, Instagram, ...rest}) => rest);
+        const ws = XLSX.utils.json_to_sheet(clean);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Reagrupado');
         const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
