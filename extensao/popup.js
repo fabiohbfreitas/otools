@@ -116,9 +116,12 @@ async function scrapeActivePageTable() {
         // 2. Process core data table pipeline
         if (foundMainHTML) {
             rawTableHTML = foundMainHTML;
-            processRawHTML(foundMainHTML);
-            copyHtmlBtn.disabled = false;
-            showStatus("Dados sincronizados com sucesso!", 'success');
+            if (processRawHTML(foundMainHTML)) {
+                copyHtmlBtn.disabled = false;
+                showStatus("Dados sincronizados com sucesso!", 'success');
+            } else {
+                showStatus("Falha ao processar a tabela.", 'error');
+            }
         } else {
             showStatus("Tabela principal não encontrada.", 'error');
         }
@@ -204,12 +207,12 @@ function processRawHTML(htmlString) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(htmlString, 'text/html');
     const table = doc.querySelector('table');
-    if (!table) return;
+    if (!table) return false;
 
     const rows = table.querySelectorAll('tr');
-    const rawSourceRows = [];
     let detectedHeaders = [];
 
+    const parsedRows = [];
     rows.forEach((row, rowIndex) => {
         const cells = row.querySelectorAll('th, td');
         if (cells.length === 0) return;
@@ -221,28 +224,33 @@ function processRawHTML(htmlString) {
         } else {
             const rowObj = {};
             rowValues.forEach((val, colIdx) => {
-                const colName = detectedHeaders[colIdx] || `Col_${colIdx}`;
-                rowObj[colName] = val;
+                rowObj[detectedHeaders[colIdx] || `Col_${colIdx}`] = val;
             });
-            rawSourceRows.push(rowObj);
+            parsedRows.push(rowObj);
         }
     });
 
-    parsedSourceRows = standardiseDataStructure(rawSourceRows);
+    parsedSourceRows = standardiseDataStructure(parsedRows);
     runAllPipelines();
+    return true;
 }
 
 function standardiseDataStructure(rawObjectsList) {
     const expectedKeys = ['nome', 'telefone', 'procedimento'];
+    if (rawObjectsList.length > 0) {
+        const firstKeys = Object.keys(rawObjectsList[0]).map(k => k.toLowerCase());
+        const missing = expectedKeys.filter(key => {
+            if (key === 'telefone') return !firstKeys.some(k => k.includes('telefone'));
+            return !firstKeys.includes(key);
+        });
+        if (missing.length) {
+            showStatus(`Colunas não encontradas: ${missing.join(', ')}.`, 'error');
+        }
+    }
     return rawObjectsList.map(obj => {
         const keyNome = Object.keys(obj).find(k => k.toLowerCase() === 'nome') || '';
         const keyTelefones = Object.keys(obj).find(k => k.toLowerCase().includes('telefone')) || '';
         const keyProcedimento = Object.keys(obj).find(k => k.toLowerCase() === 'procedimento') || '';
-
-        if (!keyNome) console.warn('standardiseDataStructure: "nome" column not found in source headers', Object.keys(obj));
-        if (!keyTelefones) console.warn('standardiseDataStructure: "telefone" column not found in source headers', Object.keys(obj));
-        if (!keyProcedimento) console.warn('standardiseDataStructure: "procedimento" column not found in source headers', Object.keys(obj));
-
         return {
             Nome: keyNome ? obj[keyNome] : '',
             Telefones: keyTelefones ? obj[keyTelefones] : '',
@@ -361,7 +369,13 @@ function downloadImportedData(format) {
         finalDataset = finalDataset.map((row, index) => {
             const groupIndex = Math.floor(index / groupSize);
             const tag = formatGroupTag(rawNames[groupIndex]);
-            row.Etiquetas = row.Etiquetas ? `${row.Etiquetas}, ${tag}` : tag;
+            const etq = row.Etiquetas || '';
+            const regex = /,\s*Consulta[^,]*/;
+            if (regex.test(etq)) {
+                row.Etiquetas = etq.replace(regex, `, ${tag}`);
+            } else {
+                row.Etiquetas = etq ? `${etq}, ${tag}` : tag;
+            }
             return row;
         });
     }
@@ -421,16 +435,18 @@ function generateCSV(dataList, headers, fieldMap) {
     return rows.join(CRLF);
 }
 
-function downloadAsCSV(csvOutputStr, fileName) {
-    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvOutputStr], { type: 'text/csv;charset=utf-8;' });
+function triggerDownload(blob, fileName) {
     const url = URL.createObjectURL(blob);
-    
     const link = document.createElement('a');
     link.href = url;
     link.download = fileName;
     link.click();
     URL.revokeObjectURL(url);
-    
+}
+
+function downloadAsCSV(csvOutputStr, fileName) {
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvOutputStr], { type: 'text/csv;charset=utf-8;' });
+    triggerDownload(blob, fileName);
     showStatus(`"${fileName}" baixado!`, 'success');
 }
 
@@ -441,13 +457,9 @@ function downloadAsExcel(sheetData, fileName) {
     }
 
     try {
-        const refDate = refDateInput.value;
-        const chosenEspecialidade = especialidadeSel.value;
-        const chosenLocal = localSel.value;
-
-        const nameParts = [refDate];
-        if (chosenLocal) nameParts.push(chosenLocal);
-        if (chosenEspecialidade) nameParts.push(chosenEspecialidade);
+        const nameParts = [refDateInput.value];
+        if (localSel.value) nameParts.push(localSel.value);
+        if (especialidadeSel.value) nameParts.push(especialidadeSel.value);
 
         let sheetName = nameParts.join('_').replace(/[\\\/\?\*\:\[\]]/g, '').substring(0, 31);
         if (!sheetName) sheetName = "Export";
@@ -458,13 +470,7 @@ function downloadAsExcel(sheetData, fileName) {
 
         const xlsxBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
         const blob = new Blob([xlsxBuffer], { type: 'application/octet-stream' });
-        const url = URL.createObjectURL(blob);
-
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = fileName;
-        link.click();
-        URL.revokeObjectURL(url);
+        triggerDownload(blob, fileName);
 
         showStatus(`"${fileName}" baixado!`, 'success');
     } catch (err) {
