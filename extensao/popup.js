@@ -316,8 +316,6 @@ function runAllPipelines() {
         return {
             Nome: nome,
             Telefone: chosenPhone,
-            Email: '',
-            Instagram: '',
             Etiquetas: etiquetas,
             NotasInternas: notasInternas
         };
@@ -376,14 +374,12 @@ function triggerImportedFileSave(dataset, filename, format) {
         const structuredXlsx = dataset.map(row => ({
             'Nome': row.Nome,
             'Telefone': row.Telefone,
-            'Email': row.Email,
-            'Instagram': row.Instagram,
             'Etiquetas': row.Etiquetas,
             'Notas Internas': row.NotasInternas
         }));
         downloadAsExcel(structuredXlsx, `${filename}.xlsx`);
     } else {
-        const importedHeaders = ['Nome', 'Telefone', 'Email', 'Instagram', 'Etiquetas', 'Notas Internas'];
+        const importedHeaders = ['Nome', 'Telefone', 'Etiquetas', 'Notas Internas'];
         const importedFieldMap = { 'Notas Internas': 'NotasInternas' };
         const csvString = generateCSV(dataset, importedHeaders, importedFieldMap);
         downloadAsCSV(csvString, `${filename}.csv`);
