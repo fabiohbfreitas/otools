@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Conversor de CSV Agendado</title>
+<style>
+:root {
+    --bg: #0a0a0a; --card: #121212; --border: #262626; --border-focus: #fff;
+    --text: #e5e5e5; --muted: #a3a3a3; --accent: #fff; --dim: #f5f5f5;
+    --sec-bg: #1a1a1a; --sec-hover: #2a2a2a; --success: #4ade80; --error: #f87171;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5;
+    width: 520px; margin: 2rem auto; padding: 1rem;
+}
+h1 { font-size: 1.1rem; font-weight: 700; color: var(--accent); margin-bottom: 1rem; }
+.card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+    padding: 1rem; display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1rem;
+}
+.field { display: flex; flex-direction: column; gap: .35rem; }
+label { font-size: .65rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+input, select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: .4rem; font-family: inherit; font-size: .8rem; border-radius: 4px;
+    outline: none; width: 100%;
+}
+input:focus, select:focus { border-color: var(--border-focus); }
+button {
+    background: var(--accent); color: var(--bg); border: 1px solid var(--accent);
+    border-radius: 4px; padding: .4rem .8rem; font-weight: 600; font-size: .75rem;
+    cursor: pointer; transition: background .15s, border-color .15s;
+}
+button:hover:not(:disabled) { background: var(--dim); border-color: var(--dim); }
+button:disabled { opacity: .25; cursor: not-allowed; }
+button.sec { background: var(--sec-bg); border-color: var(--border); color: var(--text); }
+button.sec:hover:not(:disabled) { background: var(--sec-hover); border-color: var(--muted); }
+.row { display: flex; gap: .75rem; }
+.row .field { flex: 1; }
+.wrap { overflow-x: auto; max-height: 200px; }
+table { width: 100%; border-collapse: collapse; text-align: left; font-size: .75rem; }
+th, td { padding: .5rem .6rem; border-bottom: 1px solid var(--border); }
+th { background: rgba(255,255,255,.02); color: var(--text); font-weight: 600; white-space: nowrap; }
+.empty { padding: 1.5rem; text-align: center; color: var(--muted); }
+.summary { font-size: .75rem; color: var(--muted); text-align: center; }
+.status { text-align: center; min-height: 1.25rem; font-size: .8rem; font-weight: 500; }
+.status-success { color: var(--success); }
+.status-error { color: var(--error); }
+</style>
+</head>
+<body>
+
+<h1>Conversor de CSV Agendado</h1>
+
+<div class="card">
+    <div class="field">
+        <label for="csvFile">Arquivo CSV (Paciente, Telefone)</label>
+        <input type="file" id="csvFile" accept=".csv">
+    </div>
+    <div class="row">
+        <div class="field">
+            <label for="refDate">Data de Referência</label>
+            <input type="date" id="refDate">
+        </div>
+        <div class="field">
+            <label for="localInput">Local</label>
+            <input type="text" id="localInput" placeholder="Opcional">
+        </div>
+    </div>
+    <div class="row">
+        <div class="field">
+            <label for="especInput">Especialidade</label>
+            <input type="text" id="especInput" placeholder="Opcional">
+        </div>
+    </div>
+    <button id="processBtn" class="sec" disabled>Converter</button>
+</div>
+
+<div class="card">
+    <div class="wrap" id="previewContainer">
+        <div class="empty">Carregue um CSV para visualizar a prévia.</div>
+    </div>
+    <div class="summary" id="summary"></div>
+</div>
+
+<div style="display:flex;gap:.5rem;justify-content:center">
+    <button id="dlCsvBtn" class="sec" disabled>CSV</button>
+</div>
+
+<div class="status" id="status"></div>
+
+<script>
+let resultData = [];
+let statusTimeout;
+
+const csvFile = document.getElementById('csvFile');
+const refDate = document.getElementById('refDate');
+const localInput = document.getElementById('localInput');
+const especInput = document.getElementById('especInput');
+const processBtn = document.getElementById('processBtn');
+const previewContainer = document.getElementById('previewContainer');
+const summary = document.getElementById('summary');
+const dlCsvBtn = document.getElementById('dlCsvBtn');
+const statusEl = document.getElementById('status');
+
+const today = new Date();
+const next = new Date(today);
+next.setDate(next.getDate() + 1);
+while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
+refDate.value = next.toISOString().split('T')[0];
+
+csvFile.addEventListener('change', () => {
+    processBtn.disabled = !csvFile.files.length;
+});
+
+processBtn.addEventListener('click', () => {
+    const file = csvFile.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => processCSV(e.target.result);
+    reader.readAsText(file, 'UTF-8');
+});
+
+function processCSV(text) {
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    if (lines.length < 3) { showStatus('CSV deve ter título, cabeçalho e ao menos uma linha de dados.', 'error'); return; }
+
+    const headers = parseCSVLine(lines[1]).map(h => h.trim().toUpperCase());
+    const idxPaciente = headers.findIndex(h => h === 'PACIENTE');
+    const idxTelefone = headers.findIndex(h => h === 'TELEFONE');
+    if (idxPaciente === -1) { showStatus('Coluna "Paciente" não encontrada no cabeçalho (linha 2).', 'error'); return; }
+    if (idxTelefone === -1) { showStatus('Coluna "Telefone" não encontrada no cabeçalho (linha 2).', 'error'); return; }
+
+    const dateVal = refDate.value;
+    const local = localInput.value.trim();
+    const espec = especInput.value.trim();
+
+    let currentHour = null;
+    resultData = [];
+
+    for (let i = 2; i < lines.length; i++) {
+        const vals = parseCSVLine(lines[i]);
+        const primeiro = (vals[0] || '').trim();
+
+        const hourMatch = primeiro.match(/^(\d{1,2})(?:h|:\d{2})$/);
+        if (hourMatch) {
+            currentHour = hourMatch[1].padStart(2, '0');
+            continue;
+        }
+
+        if (vals.length < headers.length) continue;
+        const paciente = vals[idxPaciente].trim();
+        const telefoneRaw = vals[idxTelefone].trim();
+        if (!paciente && !telefoneRaw) continue;
+
+        const phones = extractPhones(telefoneRaw);
+        if (!phones.length) continue;
+
+        const targetIdx = phones.findIndex(p => {
+            const d = p.replace(/\D/g, '').substring(2);
+            return d.length === 9 && d.startsWith('9');
+        });
+        const chosenPhone = targetIdx !== -1 ? phones[targetIdx] : phones[0];
+        const remaining = phones.filter((_, i) => i !== targetIdx).join(', ');
+
+        const tagsBase = [dateVal, 'Automação'];
+        if (local) tagsBase.push(local);
+        if (espec) tagsBase.push(espec);
+        if (currentHour) tagsBase.push(`Consulta${currentHour}h`);
+        const etiquetas = tagsBase.join(', ');
+
+        resultData.push({
+            Nome: paciente,
+            Telefone: chosenPhone,
+            Etiquetas: etiquetas,
+            NotasInternas: remaining ? `Outros telefones: ${remaining}` : ''
+        });
+    }
+
+    if (!resultData.length) { showStatus('Nenhum registro válido encontrado.', 'error'); return; }
+
+    renderPreview(resultData);
+    dlCsvBtn.disabled = false;
+    showStatus(`${resultData.length} registros convertidos.`, 'success');
+}
+
+function renderPreview(data) {
+    previewContainer.innerHTML = '';
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    ['Nome', 'Telefone', 'Etiquetas', 'Notas Internas'].forEach(t => {
+        const th = document.createElement('th'); th.textContent = t; hr.appendChild(th);
+    });
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    data.slice(0, 5).forEach(row => {
+        const tr = document.createElement('tr');
+        [row.Nome, row.Telefone, row.Etiquetas, row.NotasInternas || '—'].forEach(v => {
+            const td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    previewContainer.appendChild(table);
+    summary.textContent = `${data.length} registros · exibindo 5`;
+}
+
+dlCsvBtn.addEventListener('click', () => {
+    const headers = ['Nome', 'Telefone', 'Etiquetas', 'Notas Internas'];
+    const fieldMap = { 'Notas Internas': 'NotasInternas' };
+    const csv = generateCSV(resultData, headers, fieldMap);
+    const name = `agendados_${refDate.value}.csv`;
+    const blob = new Blob([new Uint8Array([0xEF,0xBB,0xBF]), csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+    URL.revokeObjectURL(url);
+    showStatus(`"${name}" baixado!`, 'success');
+});
+
+const CRLF = '\r\n';
+
+function escapeField(f) {
+    const str = typeof f === 'string' ? f : String(f ?? '');
+    return `"${str.replace(/"/g, '""')}"`;
+}
+
+function generateCSV(data, headers, fieldMap) {
+    if (!data.length) return '';
+    const rows = [headers.join(',')];
+    data.forEach(row => {
+        rows.push(headers.map(h => escapeField(fieldMap ? row[fieldMap[h] || h] : row[h])).join(','));
+    });
+    return rows.join(CRLF);
+}
+
+function extractPhones(phoneStr) {
+    if (!phoneStr) return [];
+    const regex = /(?:\(?\d{2}\)?\s?\d{4,5}-?\d{4})/g;
+    const matches = phoneStr.match(regex) || [];
+    return matches.map(num => {
+        const cleaned = num.replace(/\D/g, '');
+        if (cleaned.length === 11) return `(${cleaned.slice(0,2)}) ${cleaned.slice(2,7)}-${cleaned.slice(7)}`;
+        if (cleaned.length === 10) return `(${cleaned.slice(0,2)}) ${cleaned.slice(2,6)}-${cleaned.slice(6)}`;
+        return num.trim();
+    });
+}
+
+function parseCSVLine(line) {
+    const result = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (inQ) {
+            if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+            else if (c === '"') inQ = false;
+            else cur += c;
+        } else {
+            if (c === '"') inQ = true;
+            else if (c === ',') { result.push(cur); cur = ''; }
+            else cur += c;
+        }
+    }
+    result.push(cur);
+    return result;
+}
+
+function showStatus(text, type) {
+    clearTimeout(statusTimeout);
+    statusEl.textContent = text;
+    statusEl.className = 'status';
+    if (type) statusEl.classList.add('status-' + type);
+    statusTimeout = setTimeout(() => {
+        if (statusEl.textContent === text) { statusEl.textContent = ''; statusEl.className = 'status'; }
+    }, 4000);
+}
+</script>
+</body>
+</html>
