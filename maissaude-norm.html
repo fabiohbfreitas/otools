@@ -185,7 +185,7 @@ function processCSV(text) {
             merged[key] = {
                 Nome: row.Nome,
                 Telefone: row.Telefone,
-                NotasInternas: row.NotasInternas,
+                remainingPhones: '',
                 especialidades: new Set()
             };
         }
@@ -193,9 +193,10 @@ function processCSV(text) {
         if (row._especialidade) m.especialidades.add(row._especialidade);
         if (!m.Telefone && row.Telefone) m.Telefone = row.Telefone;
         if (row.NotasInternas) {
-            m.NotasInternas = m.NotasInternas
-                ? `${m.NotasInternas}; ${row.NotasInternas}`
-                : row.NotasInternas;
+            const phones = row.NotasInternas.replace(/^Outros telefones:\s*/, '');
+            m.remainingPhones = m.remainingPhones
+                ? `${m.remainingPhones}, ${phones}`
+                : phones;
         }
     });
 
@@ -206,7 +207,7 @@ function processCSV(text) {
             Nome: m.Nome,
             Telefone: m.Telefone,
             Etiquetas: etiquetas,
-            NotasInternas: m.NotasInternas,
+            NotasInternas: m.remainingPhones ? `Outros telefones: ${m.remainingPhones}` : '',
             _especialidade: espList
         };
     });
