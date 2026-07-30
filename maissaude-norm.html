@@ -177,12 +177,38 @@ function processCSV(text) {
         });
     }
 
-    const seen = new Set();
-    resultData = resultData.filter(row => {
+    const merged = {};
+    resultData.forEach(row => {
         const key = row.Nome.toLowerCase().trim();
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
+        if (!key) return;
+        if (!merged[key]) {
+            merged[key] = {
+                Nome: row.Nome,
+                Telefone: row.Telefone,
+                NotasInternas: row.NotasInternas,
+                especialidades: new Set()
+            };
+        }
+        const m = merged[key];
+        if (row._especialidade) m.especialidades.add(row._especialidade);
+        if (!m.Telefone && row.Telefone) m.Telefone = row.Telefone;
+        if (row.NotasInternas) {
+            m.NotasInternas = m.NotasInternas
+                ? `${m.NotasInternas}; ${row.NotasInternas}`
+                : row.NotasInternas;
+        }
+    });
+
+    resultData = Object.values(merged).map(m => {
+        const espList = Array.from(m.especialidades).sort();
+        const etiquetas = [dateVal, 'Automação', 'Convocacao', 'MaisSaude', ...espList].join(', ');
+        return {
+            Nome: m.Nome,
+            Telefone: m.Telefone,
+            Etiquetas: etiquetas,
+            NotasInternas: m.NotasInternas,
+            _especialidade: espList
+        };
     });
 
     if (!resultData.length) { showStatus('Nenhum registro válido encontrado.', 'error'); return; }
@@ -231,9 +257,11 @@ dlCsvBtn.addEventListener('click', () => {
 dlGroupedBtn.addEventListener('click', () => {
     const grupos = {};
     resultData.forEach(row => {
-        const esp = row._especialidade || 'SemEspecialidade';
-        if (!grupos[esp]) grupos[esp] = [];
-        grupos[esp].push(row);
+        const espList = Array.isArray(row._especialidade) ? row._especialidade : [row._especialidade || 'SemEspecialidade'];
+        espList.forEach(esp => {
+            if (!grupos[esp]) grupos[esp] = [];
+            grupos[esp].push(row);
+        });
     });
     const dateStr = extractedDate.value.replace(/\//g, '-');
     const headers = ['Nome', 'Telefone', 'Etiquetas', 'Notas Internas'];
