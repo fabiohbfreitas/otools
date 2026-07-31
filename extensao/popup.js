@@ -5,6 +5,8 @@ let rawTableHTML = "";
 let parsedSourceRows = [];   // Standardized structural rows
 let importedData = [];       // WhatsApp-optimized pipeline output
 let transformedData = [];    // 8-column structured output
+let naoConsultadosPending = []; // Parsed rows from the current page (tblConfirmacao)
+let naoConsultadosAccum = [];   // Deduplicated accumulation across pages
 let statusTimeout;
 
 // UI Targets
@@ -21,6 +23,8 @@ const copyHtmlBtn = document.getElementById('copyHtmlBtn');
 const dlImportedCsvBtn = document.getElementById('dlImportedCsvBtn');
 const dlImportedXlsxBtn = document.getElementById('dlImportedXlsxBtn');
 const dlTransformedXlsxBtn = document.getElementById('dlTransformedXlsxBtn');
+const addNaoConsultadosBtn = document.getElementById('addNaoConsultadosBtn');
+const dlNaoConsultadosXlsxBtn = document.getElementById('dlNaoConsultadosXlsxBtn');
 
 /* ==========================================
    BUSINESS CONFIGURATION
@@ -59,6 +63,8 @@ localSel.addEventListener('change', () => { updateDefaultFileName(); runAllPipel
 dlImportedCsvBtn.addEventListener('click', () => downloadImportedData('csv'));
 dlImportedXlsxBtn.addEventListener('click', () => downloadImportedData('xlsx'));
 dlTransformedXlsxBtn.addEventListener('click', () => downloadTransformedData());
+dlNaoConsultadosXlsxBtn.addEventListener('click', downloadNaoConsultadosData);
+addNaoConsultadosBtn.addEventListener('click', addNaoConsultadosPending);
 
 /* ==========================================
    DOM SCRAPER & FRAME INJECTOR (UNIVERSAL)
@@ -66,6 +72,11 @@ dlTransformedXlsxBtn.addEventListener('click', () => downloadTransformedData());
 async function scrapeActivePageTable() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) return;
+
+    // Track which tab the accumulation belongs to, so it's cleared when that tab closes
+    if (chrome?.storage?.session) {
+        chrome.storage.session.set({ naoConsultadosTabId: tab.id });
+    }
 
     toggleLoading(true);
 
@@ -78,9 +89,14 @@ async function scrapeActivePageTable() {
             const metaTables = document.querySelectorAll('table.table_listagem');
             const metaHTMLs = Array.from(metaTables).map(t => t.outerHTML);
             
+            // Gather confirmacao tables (Não Consultados export)
+            const confirmTables = document.querySelectorAll('table[id^="tblConfirmacao"]');
+            const confirmHTMLs = Array.from(confirmTables).map(t => t.outerHTML);
+            
             return {
                 mainHTML: table ? table.outerHTML : null,
-                metaHTMLs: metaHTMLs.length > 0 ? metaHTMLs : null
+                metaHTMLs: metaHTMLs.length > 0 ? metaHTMLs : null,
+                confirmHTMLs: confirmHTMLs.length > 0 ? confirmHTMLs : null
             };
         }
     }, (results) => {
@@ -97,6 +113,7 @@ async function scrapeActivePageTable() {
 
         let foundMainHTML = null;
         let accumulatedMetaHTMLs = [];
+        let accumulatedConfirmHTMLs = [];
 
         // Aggregate findings across all frame contexts
         results.forEach(r => {
@@ -105,6 +122,9 @@ async function scrapeActivePageTable() {
                 if (r.result.metaHTMLs) {
                     accumulatedMetaHTMLs = accumulatedMetaHTMLs.concat(r.result.metaHTMLs);
                 }
+                if (r.result.confirmHTMLs) {
+                    accumulatedConfirmHTMLs = accumulatedConfirmHTMLs.concat(r.result.confirmHTMLs);
+                }
             }
         });
 
@@ -112,6 +132,12 @@ async function scrapeActivePageTable() {
         if (accumulatedMetaHTMLs.length > 0) {
             processMultipleMetadataHTML(accumulatedMetaHTMLs);
         }
+
+        // 1.5. Process confirmacao tables (Não Consultados) into the pending buffer
+        naoConsultadosPending = accumulatedConfirmHTMLs.length > 0
+            ? parseNaoConsultadosHTML(accumulatedConfirmHTMLs)
+            : [];
+        updateNaoConsultadosUI();
 
         // 2. Process core data table pipeline
         if (foundMainHTML) {
@@ -287,7 +313,6 @@ function runAllPipelines() {
         dlTransformedXlsxBtn.disabled = true;
         return;
     }
-
     const refDate = refDateInput.value;
     const chosenEspecialidade = especialidadeSel.value;
     const chosenLocal = localSel.value;
@@ -417,6 +442,152 @@ function downloadTransformedData() {
 }
 
 /* ==========================================
+   NÃO CONSULTADOS (tblConfirmacao)
+   ========================================== */
+const NAO_CONSULTADO_HEADERS = ['Paciente', 'Telefone', 'Data', 'Horário', 'Unidade', 'Especialidade', 'Situação', 'Observação'];
+
+const ESPECIALIDADE_MAP = {
+    'ORTOPEDIA': 'Ortopedia',
+    'CARDIOLOGIA': 'Cardiologia',
+    'OTORRINOLARINGOLOGIA': 'Otorrinolaringologia',
+    'GINECOLOGIA': 'Ginecologia',
+    'ELETROCARDIOGRAMA': 'Eletrocardiograma',
+    'TOMOGRAFIA': 'Tomografia',
+    'REUMATOLOGIA': 'Reumatologia',
+    'ESPIROMETRIA': 'Espirometria',
+    'MAMOGRAFIA': 'Mamografia',
+    'RESSONANCIA MAGNETICA': 'RessonanciaMagnetica'
+};
+
+function cellTextWithBr(td) {
+    const clone = td.cloneNode(true);
+    clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+    return clone.textContent;
+}
+
+function deriveEspecialidade(procedimento) {
+    if (!procedimento) return '';
+    const upper = procedimento.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    for (const [kw, name] of Object.entries(ESPECIALIDADE_MAP)) {
+        if (upper.includes(kw)) return name;
+    }
+    return '';
+}
+
+function parseNaoConsultadosHTML(confirmHTMLs) {
+    const results = [];
+    confirmHTMLs.forEach(htmlStr => {
+        const doc = new DOMParser().parseFromString(htmlStr, 'text/html');
+        const tds = Array.from(doc.querySelectorAll('td'));
+
+        // Hard filter: table must contain a "Chave:" cell
+        if (!tds.some(td => td.textContent.trim().startsWith('Chave:'))) return;
+
+        let solicitacao = '', paciente = '', telefones = '', data = '';
+
+        tds.forEach(td => {
+            const bold = td.querySelector('b');
+            if (!bold) return;
+            const label = bold.textContent.replace(':', '').trim();
+            const full = cellTextWithBr(td);
+            const value = full.slice(full.indexOf(label) + label.length + 1).trim();
+
+            if (label === 'Paciente') paciente = value;
+            else if (label.startsWith('Telefone')) telefones = value;
+            else if (label.includes('Data/Hora')) {
+                const m = value.match(/(\d{2}\/\d{2}\/\d{4})/);
+                if (m) data = m[1];
+            }
+            if (!solicitacao && label === '' && /^\d{6,}$/.test(bold.textContent.trim())) {
+                solicitacao = bold.textContent.trim();
+            }
+        });
+
+        let procedimento = '';
+        doc.querySelectorAll('tr').forEach(row => {
+            const rowTds = row.querySelectorAll('td');
+            if (rowTds.length >= 2 && rowTds[0].textContent.trim().includes('Procedimento')) {
+                procedimento = rowTds[1].textContent.trim();
+            }
+        });
+
+        results.push({
+            Paciente: paciente,
+            Telefone: telefones === '---' ? '' : telefones.replace(/\n/g, ', '),
+            Data: data,
+            Horário: '',
+            Unidade: localSel.value,
+            Especialidade: deriveEspecialidade(procedimento),
+            Situação: 'Não consultado',
+            Observação: solicitacao ? `Solicitação: ${solicitacao}` : ''
+        });
+    });
+    return results;
+}
+
+function normalizePacienteKey(name) {
+    return (name || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function addNaoConsultadosPending() {
+    if (naoConsultadosPending.length === 0) return;
+
+    const existing = new Set(naoConsultadosAccum.map(r => normalizePacienteKey(r.Paciente)));
+    let added = 0;
+    naoConsultadosPending.forEach(row => {
+        const key = normalizePacienteKey(row.Paciente);
+        if (!key || existing.has(key)) return;
+        existing.add(key);
+        naoConsultadosAccum.push(row);
+        added++;
+    });
+
+    naoConsultadosPending = [];
+    saveNaoConsultadosAccum();
+    updateNaoConsultadosUI();
+    showStatus(`${added} adicionado(s). Total: ${naoConsultadosAccum.length}`, 'success');
+}
+
+function saveNaoConsultadosAccum() {
+    if (chrome?.storage?.session) {
+        chrome.storage.session.set({ naoConsultadosAccum });
+    }
+}
+
+function updateNaoConsultadosUI() {
+    addNaoConsultadosBtn.disabled = naoConsultadosPending.length === 0;
+    dlNaoConsultadosXlsxBtn.disabled = naoConsultadosAccum.length === 0;
+    const counter = document.getElementById('naoConsultadosCount');
+    if (counter) {
+        counter.textContent = naoConsultadosAccum.length > 0
+            ? `(total: ${naoConsultadosAccum.length})`
+            : naoConsultadosPending.length > 0
+                ? `(${naoConsultadosPending.length} na página)`
+                : '';
+    }
+}
+
+function downloadNaoConsultadosData() {
+    if (naoConsultadosAccum.length === 0) return;
+    const dateStr = (naoConsultadosAccum[0].Data || refDateInput.value || 'data').replace(/\//g, '-');
+    const nameParts = ['nao_consultados', dateStr];
+    if (localSel.value) nameParts.push(localSel.value);
+    if (especialidadeSel.value) nameParts.push(especialidadeSel.value);
+    const structured = naoConsultadosAccum.map(row => {
+        const obj = {};
+        NAO_CONSULTADO_HEADERS.forEach(h => { obj[h] = row[h]; });
+        return obj;
+    });
+    downloadAsExcel(structured, `${nameParts.join('_')}.xlsx`);
+
+    naoConsultadosAccum = [];
+    if (chrome?.storage?.session) {
+        chrome.storage.session.remove(['naoConsultadosAccum', 'naoConsultadosTabId']);
+    }
+    updateNaoConsultadosUI();
+}
+
+/* ==========================================
    CSV & SHEET ENGINES
    ========================================== */
 const CRLF = '\r\n';
@@ -529,4 +700,14 @@ function getNextBusinessDay(date) {
 function formatGroupTag(name) {
     if (/^\d+$/.test(name)) return `Consulta${name.padStart(2, '0')}h`;
     return 'Consulta' + name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+}
+
+// Restore accumulated Não Consultados across popup sessions (after all consts are initialized)
+if (chrome?.storage?.session) {
+    chrome.storage.session.get('naoConsultadosAccum').then(result => {
+        if (Array.isArray(result.naoConsultadosAccum)) {
+            naoConsultadosAccum = result.naoConsultadosAccum;
+        }
+        updateNaoConsultadosUI();
+    });
 }

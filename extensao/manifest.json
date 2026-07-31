@@ -5,7 +5,8 @@
   "description": "Extrai, transforma e exporta dados do SISREGIII.",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
@@ -17,5 +18,8 @@
       "48": "icon48.png",
       "128": "icon128.png"
     }
+  },
+  "background": {
+    "service_worker": "background.js"
   }
 }
