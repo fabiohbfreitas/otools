@@ -13,3 +13,5 @@ Desktop.ini
 *.log
 tmp/
 *.zip
+*.csv
+*.xlsx
