@@ -143,11 +143,16 @@ function processCSV(text) {
 
     const headers = parseCSVLine(lines[0]);
     const idxMap = {};
-    const expected = ['N°','UNIDADE','ESPECIALIDADE','CONSULTA','PACIENTE','CPF','PRESCRIÇÃO','OCI','RM','RX','TELEFONE'];
-    for (const h of expected) {
-        const found = headers.findIndex((c, i) => c.trim().toUpperCase() === h || (h === 'N°' && c.trim() === 'N°'));
-        if (found === -1) { showStatus(`Column "${h}" not found in CSV.`); return; }
+    const required = ['PACIENTE','TELEFONE'];
+    const optional = ['N°','UNIDADE','ESPECIALIDADE','CONSULTA','CPF','PRESCRIÇÃO','OCI','RM','RX'];
+    for (const h of required) {
+        const found = headers.findIndex((c, i) => c.trim().toUpperCase() === h);
+        if (found === -1) { showStatus(`Column \"${h}\" not found in CSV.`); return; }
         idxMap[h] = found;
+    }
+    for (const h of optional) {
+        const found = headers.findIndex((c, i) => c.trim().toUpperCase() === h);
+        if (found !== -1) idxMap[h] = found;
     }
 
     const rows = [];
@@ -155,8 +160,8 @@ function processCSV(text) {
         const vals = parseCSVLine(lines[i]);
         if (vals.length < headers.length) continue;
         rows.push({
-            unidade: vals[idxMap['UNIDADE']].trim(),
-            especialidade: vals[idxMap['ESPECIALIDADE']].trim(),
+            unidade: (idxMap['UNIDADE'] !== undefined ? vals[idxMap['UNIDADE']] : '').trim(),
+            especialidade: (idxMap['ESPECIALIDADE'] !== undefined ? vals[idxMap['ESPECIALIDADE']] : '').trim(),
             paciente: vals[idxMap['PACIENTE']].trim(),
             telefone: vals[idxMap['TELEFONE']].trim()
         });
