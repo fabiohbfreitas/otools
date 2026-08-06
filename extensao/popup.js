@@ -89,8 +89,8 @@ async function scrapeActivePageTable() {
             const metaTables = document.querySelectorAll('table.table_listagem');
             const metaHTMLs = Array.from(metaTables).map(t => t.outerHTML);
             
-            // Gather confirmacao tables (Não Consultados export)
-            const confirmTables = document.querySelectorAll('table[id^="tblConfirmacao"]');
+            // Gather confirmacao + consulta tables (Não Consultados export)
+            const confirmTables = document.querySelectorAll('table[id^="tblConfirmacao"], table[id^="tblConsulta"]');
             const confirmHTMLs = Array.from(confirmTables).map(t => t.outerHTML);
             
             return {
@@ -474,14 +474,26 @@ function deriveEspecialidade(procedimento) {
     return '';
 }
 
+function hasSituacaoPendente(tds) {
+    return tds.some(td => {
+        const text = td.textContent.trim().replace(/\u00A0/g, ' ');
+        if (!text.startsWith('Situação:')) return false;
+        const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return normalized.includes('pendente confirmacao');
+    });
+}
+
 function parseNaoConsultadosHTML(confirmHTMLs) {
     const results = [];
     confirmHTMLs.forEach(htmlStr => {
         const doc = new DOMParser().parseFromString(htmlStr, 'text/html');
         const tds = Array.from(doc.querySelectorAll('td'));
 
-        // Hard filter: table must contain a "Chave:" cell
-        if (!tds.some(td => td.textContent.trim().startsWith('Chave:'))) return;
+        // Qualifies with a "Chave:" cell (confirmation input) or a "Situação:" cell
+        // marked "Pendente Confirmação" (not yet confirmed/consulted).
+        const hasChave = tds.some(td => td.textContent.trim().startsWith('Chave:'));
+        const hasPendente = hasSituacaoPendente(tds);
+        if (!hasChave && !hasPendente) return;
 
         let solicitacao = '', paciente = '', telefones = '', data = '';
 
@@ -518,7 +530,7 @@ function parseNaoConsultadosHTML(confirmHTMLs) {
             Horário: '',
             Unidade: localSel.value,
             Especialidade: deriveEspecialidade(procedimento),
-            Situação: 'Não consultado',
+            Situação: hasChave ? 'Não consultado' : 'Pendente Confirmação',
             Observação: solicitacao ? `Solicitação: ${solicitacao}` : ''
         });
     });
