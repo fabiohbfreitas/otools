@@ -480,13 +480,15 @@ function deriveEspecialidade(procedimento) {
     return '';
 }
 
-function hasSituacaoPendente(tds) {
-    return tds.some(td => {
+function getSituacaoQualifier(tds) {
+    for (const td of tds) {
         const text = td.textContent.trim().replace(/\u00A0/g, ' ');
-        if (!text.startsWith('Situação:')) return false;
+        if (!text.startsWith('Situação:')) continue;
         const normalized = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        return normalized.includes('pendente confirmacao');
-    });
+        if (normalized.includes('pendente confirmacao')) return 'Pendente Confirmação';
+        if (normalized.includes('falta')) return 'Falta';
+    }
+    return '';
 }
 
 function parseNaoConsultadosHTML(confirmHTMLs) {
@@ -496,10 +498,10 @@ function parseNaoConsultadosHTML(confirmHTMLs) {
         const tds = Array.from(doc.querySelectorAll('td'));
 
         // Qualifies with a "Chave:" cell (confirmation input) or a "Situação:" cell
-        // marked "Pendente Confirmação" (not yet confirmed/consulted).
+        // marked "Pendente Confirmação" / "Falta" (not yet confirmed/consulted).
         const hasChave = tds.some(td => td.textContent.trim().startsWith('Chave:'));
-        const hasPendente = hasSituacaoPendente(tds);
-        if (!hasChave && !hasPendente) return;
+        const situacaoQualifier = getSituacaoQualifier(tds);
+        if (!hasChave && !situacaoQualifier) return;
 
         let solicitacao = '', paciente = '', telefones = '', data = '';
 
@@ -536,7 +538,7 @@ function parseNaoConsultadosHTML(confirmHTMLs) {
             Horário: '',
             Unidade: localSel.value,
             Especialidade: deriveEspecialidade(procedimento),
-            Situação: hasChave ? 'Não consultado' : 'Pendente Confirmação',
+            Situação: hasChave ? 'Não consultado' : situacaoQualifier,
             Observação: solicitacao ? `Solicitação: ${solicitacao}` : ''
         });
     });
