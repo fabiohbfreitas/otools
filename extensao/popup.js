@@ -16,6 +16,7 @@ const localSel = document.getElementById('localSel');
 const exportNameInput = document.getElementById('exportNameInput');
 const groupNamesInput = document.getElementById('groupNamesInput');
 const statusMsg = document.getElementById('status');
+const statusNaoConsultadosMsg = document.getElementById('statusNaoConsultados');
 const loadingContainer = document.getElementById('loadingContainer');
 
 const refreshBtn = document.getElementById('refreshBtn');
@@ -25,6 +26,7 @@ const dlImportedXlsxBtn = document.getElementById('dlImportedXlsxBtn');
 const dlTransformedXlsxBtn = document.getElementById('dlTransformedXlsxBtn');
 const addNaoConsultadosBtn = document.getElementById('addNaoConsultadosBtn');
 const dlNaoConsultadosXlsxBtn = document.getElementById('dlNaoConsultadosXlsxBtn');
+const clearNaoConsultadosBtn = document.getElementById('clearNaoConsultadosBtn');
 
 /* ==========================================
    BUSINESS CONFIGURATION
@@ -65,6 +67,7 @@ dlImportedXlsxBtn.addEventListener('click', () => downloadImportedData('xlsx'));
 dlTransformedXlsxBtn.addEventListener('click', () => downloadTransformedData());
 dlNaoConsultadosXlsxBtn.addEventListener('click', downloadNaoConsultadosData);
 addNaoConsultadosBtn.addEventListener('click', addNaoConsultadosPending);
+clearNaoConsultadosBtn.addEventListener('click', clearNaoConsultadosData);
 
 /* ==========================================
    DOM SCRAPER & FRAME INJECTOR (UNIVERSAL)
@@ -138,6 +141,9 @@ async function scrapeActivePageTable() {
             ? parseNaoConsultadosHTML(accumulatedConfirmHTMLs)
             : [];
         updateNaoConsultadosUI();
+        if (naoConsultadosPending.length > 0) {
+            showStatus(`${naoConsultadosPending.length} não consultado(s) na página`, 'success', statusNaoConsultadosMsg);
+        }
 
         // 2. Process core data table pipeline
         if (foundMainHTML) {
@@ -541,6 +547,14 @@ function normalizePacienteKey(name) {
     return (name || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+function clearNaoConsultadosData() {
+    naoConsultadosAccum = [];
+    if (chrome?.storage?.session) {
+        chrome.storage.session.remove(['naoConsultadosAccum', 'naoConsultadosTabId']);
+    }
+    updateNaoConsultadosUI();
+}
+
 function addNaoConsultadosPending() {
     if (naoConsultadosPending.length === 0) return;
 
@@ -557,7 +571,7 @@ function addNaoConsultadosPending() {
     naoConsultadosPending = [];
     saveNaoConsultadosAccum();
     updateNaoConsultadosUI();
-    showStatus(`${added} adicionado(s). Total: ${naoConsultadosAccum.length}`, 'success');
+    showStatus(`${added} adicionado(s). Total: ${naoConsultadosAccum.length}`, 'success', statusNaoConsultadosMsg);
 }
 
 function saveNaoConsultadosAccum() {
@@ -569,6 +583,7 @@ function saveNaoConsultadosAccum() {
 function updateNaoConsultadosUI() {
     addNaoConsultadosBtn.disabled = naoConsultadosPending.length === 0;
     dlNaoConsultadosXlsxBtn.disabled = naoConsultadosAccum.length === 0;
+    clearNaoConsultadosBtn.disabled = naoConsultadosAccum.length === 0;
     const counter = document.getElementById('naoConsultadosCount');
     if (counter) {
         counter.textContent = naoConsultadosAccum.length > 0
@@ -590,13 +605,9 @@ function downloadNaoConsultadosData() {
         NAO_CONSULTADO_HEADERS.forEach(h => { obj[h] = row[h]; });
         return obj;
     });
-    downloadAsExcel(structured, `${nameParts.join('_')}.xlsx`);
+    downloadAsExcel(structured, `${nameParts.join('_')}.xlsx`, statusNaoConsultadosMsg);
 
-    naoConsultadosAccum = [];
-    if (chrome?.storage?.session) {
-        chrome.storage.session.remove(['naoConsultadosAccum', 'naoConsultadosTabId']);
-    }
-    updateNaoConsultadosUI();
+    clearNaoConsultadosData();
 }
 
 /* ==========================================
@@ -627,15 +638,15 @@ function triggerDownload(blob, fileName) {
     URL.revokeObjectURL(url);
 }
 
-function downloadAsCSV(csvOutputStr, fileName) {
+function downloadAsCSV(csvOutputStr, fileName, statusTarget) {
     const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvOutputStr], { type: 'text/csv;charset=utf-8;' });
     triggerDownload(blob, fileName);
-    showStatus(`"${fileName}" baixado!`, 'success');
+    showStatus(`"${fileName}" baixado!`, 'success', statusTarget);
 }
 
-function downloadAsExcel(sheetData, fileName) {
+function downloadAsExcel(sheetData, fileName, statusTarget) {
     if (typeof XLSX === 'undefined') {
-        showStatus("Falha ao gerar arquivo Excel.", 'error');
+        showStatus("Falha ao gerar arquivo Excel.", 'error', statusTarget);
         return;
     }
 
@@ -655,9 +666,9 @@ function downloadAsExcel(sheetData, fileName) {
         const blob = new Blob([xlsxBuffer], { type: 'application/octet-stream' });
         triggerDownload(blob, fileName);
 
-        showStatus(`"${fileName}" baixado!`, 'success');
+        showStatus(`"${fileName}" baixado!`, 'success', statusTarget);
     } catch (err) {
-        showStatus("Erro no Excel: " + err.message, 'error');
+        showStatus("Erro no Excel: " + err.message, 'error', statusTarget);
     }
 }
 
@@ -683,13 +694,14 @@ function toggleLoading(visible) {
     loadingContainer.classList.toggle('visible', visible);
 }
 
-function showStatus(text, type) {
+function showStatus(text, type, target) {
+    const el = target || statusMsg;
     clearTimeout(statusTimeout);
-    statusMsg.textContent = text;
-    statusMsg.className = 'status';
-    if (type) statusMsg.classList.add('status-' + type);
+    el.textContent = text;
+    el.className = 'status';
+    if (type) el.classList.add('status-' + type);
     statusTimeout = setTimeout(() => {
-        if (statusMsg.textContent === text) { statusMsg.textContent = ''; statusMsg.className = 'status'; }
+        if (el.textContent === text) { el.textContent = ''; el.className = 'status'; }
     }, 4000);
 }
 

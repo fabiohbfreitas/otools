@@ -121,6 +121,16 @@
             letter-spacing: 0.08em;
         }
 
+        .nc-card {
+            border-style: dashed;
+        }
+
+        .nc-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
         .export-row {
             display: flex;
             justify-content: space-between;
@@ -181,6 +191,11 @@
             cursor: not-allowed;
         }
 
+        button.btn.btn-tiny {
+            padding: 0.15rem 0.4rem;
+            font-size: 0.65rem;
+        }
+
         /* Status Bar */
         .status-container {
             text-align: center;
@@ -235,44 +250,45 @@
         </div>
     </header>
 
-    <!-- Global Configurations -->
-    <div class="config-grid">
-        <div class="field">
-            <label for="refDate">Data da Consulta</label>
-            <input type="date" id="refDate">
-        </div>
-        <div class="field">
-            <label for="especialidadeSel">Especialidade</label>
-            <select id="especialidadeSel">
-                <option value="Ortopedia">Ortopedia</option>
-                <option value="Cardiologia">Cardiologia</option>
-                <option value="Otorrinolaringologia">Otorrinolaringologia</option>
-                <option value="Ginecologia">Ginecologia</option>
-                <option value="">(Nenhum)</option>
-            </select>
-        </div>
-        <div class="field">
-            <label for="localSel">Local</label>
-            <select id="localSel">
-                <option value="Samambaia">Samambaia</option>
-                <option value="Gama">Gama</option>
-                <option value="Sobradinho">Sobradinho</option>
-                <option value="">(Nenhum)</option>
-            </select>
-        </div>
-        <div class="field">
-            <label for="exportNameInput">Nome do Arquivo</label>
-            <input type="text" id="exportNameInput" placeholder="dados_processados">
-        </div>
-        <div class="field" style="grid-column: span 2;">
-            <label for="groupNamesInput">Horários Disponíveis</label>
-            <input type="text" id="groupNamesInput" placeholder="10,12,13">
-        </div>
-    </div>
-
-    <!-- Single Export Action -->
+    <!-- CONTEXT A: Dados para Importação & Dados Completos -->
     <div class="card">
-        <div class="card-title">Exportar</div>
+        <div class="card-title">Lista de Pacientes</div>
+
+        <!-- Configurations shared by both exports -->
+        <div class="config-grid">
+            <div class="field">
+                <label for="refDate">Data da Consulta</label>
+                <input type="date" id="refDate">
+            </div>
+            <div class="field">
+                <label for="especialidadeSel">Especialidade</label>
+                <select id="especialidadeSel">
+                    <option value="Ortopedia">Ortopedia</option>
+                    <option value="Cardiologia">Cardiologia</option>
+                    <option value="Otorrinolaringologia">Otorrinolaringologia</option>
+                    <option value="Ginecologia">Ginecologia</option>
+                    <option value="">(Nenhum)</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="localSel">Local</label>
+                <select id="localSel">
+                    <option value="Samambaia">Samambaia</option>
+                    <option value="Gama">Gama</option>
+                    <option value="Sobradinho">Sobradinho</option>
+                    <option value="">(Nenhum)</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="exportNameInput">Nome do Arquivo</label>
+                <input type="text" id="exportNameInput" placeholder="dados_processados">
+            </div>
+            <div class="field" style="grid-column: span 2;">
+                <label for="groupNamesInput">Horários Disponíveis</label>
+                <input type="text" id="groupNamesInput" placeholder="10,12,13">
+            </div>
+        </div>
+
         <div class="export-row">
             <span class="export-label">Dados para Importação</span>
             <div class="export-buttons">
@@ -286,6 +302,22 @@
                 <button id="dlTransformedXlsxBtn" class="btn" disabled>Excel</button>
             </div>
         </div>
+
+        <div class="status-container">
+            <div id="loadingContainer" class="spinner-container">
+                <div class="spinner"></div>
+                <span class="status">Buscando tabelas...</span>
+            </div>
+            <span id="status" class="status"></span>
+        </div>
+    </div>
+
+    <!-- CONTEXT B: Não Consultados -->
+    <div class="card nc-card">
+        <div class="card-title nc-title">
+            <span>Não Consultados</span>
+            <button id="clearNaoConsultadosBtn" class="btn secondary btn-tiny" disabled>Limpar</button>
+        </div>
         <div class="export-row">
             <span class="export-label">Não Consultados <span id="naoConsultadosCount"></span></span>
             <div class="export-buttons">
@@ -293,15 +325,9 @@
                 <button id="dlNaoConsultadosXlsxBtn" class="btn secondary" disabled>Excel</button>
             </div>
         </div>
-    </div>
-
-    <!-- Status Banner -->
-    <div class="status-container">
-        <div id="loadingContainer" class="spinner-container">
-            <div class="spinner"></div>
-            <span class="status">Buscando tabelas...</span>
+        <div class="status-container">
+            <span id="statusNaoConsultados" class="status"></span>
         </div>
-        <span id="status" class="status"></span>
     </div>
 </div>
 
