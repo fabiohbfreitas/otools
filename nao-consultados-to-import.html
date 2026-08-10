@@ -42,6 +42,17 @@ table { width: 100%; border-collapse: collapse; text-align: left; font-size: .75
 th, td { padding: .5rem .6rem; border-bottom: 1px solid var(--border); }
 th { background: rgba(255,255,255,.02); color: var(--text); font-weight: 600; white-space: nowrap; }
 .empty { padding: 1.5rem; text-align: center; color: var(--muted); }
+.file-row {
+    display: flex; flex-direction: column; gap: .35rem;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: .6rem;
+}
+.file-row-header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.file-name { font-size: .75rem; font-weight: 600; color: var(--text); word-break: break-all; }
+button.btn-remove {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    padding: .1rem .4rem; font-size: .65rem; flex-shrink: 0;
+}
+button.btn-remove:hover:not(:disabled) { background: var(--sec-hover); color: var(--text); }
 .summary { font-size: .75rem; color: var(--muted); text-align: center; }
 .status { text-align: center; min-height: 1.25rem; font-size: .8rem; font-weight: 500; }
 .status-success { color: var(--success); }
@@ -54,17 +65,14 @@ th { background: rgba(255,255,255,.02); color: var(--text); font-weight: 600; wh
 
 <div class="card">
     <div class="field">
-        <label for="csvFile">Arquivo CSV (Paciente, Telefone, Horário, Unidade, Especialidade, ...)</label>
-        <input type="file" id="csvFile" accept=".csv">
+        <label for="csvFile">Arquivos CSV (Paciente, Telefone, Horário, Unidade, Especialidade, ...)</label>
+        <input type="file" id="csvFile" accept=".csv" multiple>
     </div>
     <div class="field">
         <label for="refDate">Data do Evento</label>
         <input type="date" id="refDate">
     </div>
-    <div class="field">
-        <label for="groupNamesInput">Horários Disponíveis</label>
-        <input type="text" id="groupNamesInput" placeholder="10,12,13">
-    </div>
+    <div id="fileRows"></div>
     <button id="processBtn" class="sec" disabled>Converter</button>
 </div>
 
@@ -101,9 +109,11 @@ const SPECIALTY_CONFIG = {
     RessonanciaMagnetica: { keywords: ['RESSONANCIA MAGNETICA'] }
 };
 
-let rawCsvText = '';
+let sources = [];       // [{ file, input }] per selected file
 let resultData = [];
+let fileSummaries = [];
 let statusTimeout;
+let conversionToken = 0;
 
 const refDateInput = document.getElementById('refDate');
 const today = new Date();
@@ -115,35 +125,91 @@ while (nextBusiness.getDay() === 0 || nextBusiness.getDay() === 6) {
 refDateInput.value = nextBusiness.toISOString().split('T')[0];
 
 const csvFile = document.getElementById('csvFile');
-const groupNamesInput = document.getElementById('groupNamesInput');
+const fileRowsContainer = document.getElementById('fileRows');
 const processBtn = document.getElementById('processBtn');
 const previewContainer = document.getElementById('previewContainer');
 const summary = document.getElementById('summary');
 const dlCsvBtn = document.getElementById('dlCsvBtn');
 const statusEl = document.getElementById('status');
 
-csvFile.addEventListener('change', () => {
-    processBtn.disabled = !csvFile.files.length;
-});
+csvFile.addEventListener('change', buildSourceRows);
 
-processBtn.addEventListener('click', () => {
-    const file = csvFile.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-        rawCsvText = e.target.result;
-        processCSV(rawCsvText);
-    };
-    reader.readAsText(file, 'UTF-8');
-});
-
-groupNamesInput.addEventListener('input', () => {
-    if (rawCsvText) processCSV(rawCsvText);
-});
+processBtn.addEventListener('click', runConversion);
 
 refDateInput.addEventListener('change', () => {
-    if (rawCsvText) processCSV(rawCsvText);
+    if (sources.length) runConversion();
 });
+
+function parseGroupNames(input) {
+    return (input.value || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function buildSourceRows() {
+    const files = Array.from(csvFile.files);
+    if (!files.length) return;
+    sources = files.map(file => ({ file, input: null }));
+    csvFile.value = '';
+    renderFileRows();
+    processBtn.disabled = sources.length === 0;
+    resetResults();
+    runConversion();
+}
+
+function renderFileRows() {
+    fileRowsContainer.innerHTML = '';
+    sources.forEach((source, index) => {
+        const row = document.createElement('div');
+        row.className = 'file-row';
+
+        const header = document.createElement('div');
+        header.className = 'file-row-header';
+        const name = document.createElement('span');
+        name.className = 'file-name';
+        name.textContent = source.file.name;
+        const rmBtn = document.createElement('button');
+        rmBtn.className = 'btn-remove';
+        rmBtn.textContent = '\u2715';
+        rmBtn.title = 'Remover arquivo';
+        rmBtn.addEventListener('click', () => {
+            sources.splice(index, 1);
+            renderFileRows();
+            processBtn.disabled = sources.length === 0;
+            resetResults();
+            runConversion();
+        });
+        header.appendChild(name);
+        header.appendChild(rmBtn);
+
+        const field = document.createElement('div');
+        field.className = 'field';
+        const lbl = document.createElement('label');
+        lbl.textContent = 'Horários Disponíveis';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = '10,12,13';
+        field.appendChild(lbl);
+        field.appendChild(input);
+        source.input = input;
+
+        let debounce;
+        input.addEventListener('input', () => {
+            clearTimeout(debounce);
+            debounce = setTimeout(() => { if (sources.length) runConversion(); }, 250);
+        });
+
+        row.appendChild(header);
+        row.appendChild(field);
+        fileRowsContainer.appendChild(row);
+    });
+}
+
+function resetResults() {
+    resultData = [];
+    fileSummaries = [];
+    dlCsvBtn.disabled = true;
+    previewContainer.innerHTML = '<div class="empty">Carregue um ou mais CSVs para visualizar a prévia.</div>';
+    summary.textContent = '';
+}
 
 function normHeader(h) {
     return h.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -165,9 +231,47 @@ function detectEspecialidade(raw) {
     return String(raw || '').trim();
 }
 
-function processCSV(text) {
+async function runConversion() {
+    if (!sources.length) return;
+    const dateVal = refDateInput.value;
+    if (!dateVal) { showStatus('Defina a Data do Evento.', 'error'); return; }
+
+    const token = ++conversionToken;
+    const combined = [];
+    const summaries = [];
+
+    for (const source of sources) {
+        let text;
+        try {
+            text = await source.file.text();
+        } catch (e) {
+            continue;
+        }
+        if (token !== conversionToken) return;
+
+        const parsed = parseCSVFile(text);
+        if (parsed.error) {
+            showStatus(`Arquivo "${source.file.name}": ${parsed.error}`, 'error');
+            return;
+        }
+        const rows = buildImportRows(parsed.rows, parseGroupNames(source.input), dateVal);
+        combined.push(...rows);
+        summaries.push({ name: source.file.name, count: rows.length });
+    }
+
+    if (token !== conversionToken) return;
+    if (!combined.length) { showStatus('Nenhum registro válido encontrado.', 'error'); return; }
+
+    resultData = combined;
+    fileSummaries = summaries;
+    renderPreview(combined, summaries);
+    dlCsvBtn.disabled = false;
+    showStatus(`${combined.length} registros convertidos.`, 'success');
+}
+
+function parseCSVFile(text) {
     const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
-    if (lines.length < 2) { showStatus('CSV deve ter cabeçalho e ao menos uma linha.', 'error'); return; }
+    if (lines.length < 2) return { error: 'CSV deve ter cabeçalho e ao menos uma linha.' };
 
     const sep = (lines[0].match(/;/g) || []).length > (lines[0].match(/,/g) || []).length ? ';' : ',';
     const headers = parseCSVLine(lines[0], sep).map(normHeader);
@@ -176,24 +280,34 @@ function processCSV(text) {
     const idxHorario = headers.findIndex(h => h.replace(/[^A-Z0-9]/g, '') === 'HORARIO');
     const idxUnidade = headers.findIndex(h => h.replace(/[^A-Z0-9]/g, '') === 'UNIDADE');
     const idxEspecialidade = headers.findIndex(h => h.replace(/[^A-Z0-9]/g, '') === 'ESPECIALIDADE');
-    if (idxPaciente === -1) { showStatus(`Coluna "Paciente" não encontrada. Cabeçalho lido: ${headers.join(', ')}`, 'error'); return; }
-    if (idxTelefone === -1) { showStatus('Coluna "Telefone" não encontrada.', 'error'); return; }
-    if (idxHorario === -1) { showStatus('Coluna "Horário" não encontrada.', 'error'); return; }
-    if (idxUnidade === -1) { showStatus('Coluna "Unidade" não encontrada.', 'error'); return; }
-    if (idxEspecialidade === -1) { showStatus('Coluna "Especialidade" não encontrada.', 'error'); return; }
+    if (idxPaciente === -1) return { error: `Coluna "Paciente" não encontrada. Cabeçalho lido: ${headers.join(', ')}` };
+    if (idxTelefone === -1) return { error: 'Coluna "Telefone" não encontrada.' };
+    if (idxHorario === -1) return { error: 'Coluna "Horário" não encontrada.' };
+    if (idxUnidade === -1) return { error: 'Coluna "Unidade" não encontrada.' };
+    if (idxEspecialidade === -1) return { error: 'Coluna "Especialidade" não encontrada.' };
 
-    const dateVal = refDateInput.value;
-    if (!dateVal) { showStatus('Defina a Data do Evento.', 'error'); return; }
-
-    resultData = [];
+    const rows = [];
     for (let i = 1; i < lines.length; i++) {
         const vals = parseCSVLine(lines[i], sep);
         if (vals.length < headers.length) continue;
         const paciente = vals[idxPaciente].trim();
         if (!paciente) continue;
+        rows.push({
+            paciente,
+            telefone: vals[idxTelefone],
+            horario: vals[idxHorario],
+            unidade: vals[idxUnidade],
+            especialidade: vals[idxEspecialidade]
+        });
+    }
+    return { rows };
+}
 
-        const phones = extractPhones(vals[idxTelefone]);
-        if (!phones.length) continue;
+function buildImportRows(parsedRows, groupNames, dateVal) {
+    const result = [];
+    parsedRows.forEach(row => {
+        const phones = extractPhones(row.telefone);
+        if (!phones.length) return;
 
         const targetIdx = phones.findIndex(p => {
             const d = p.replace(/\D/g, '').substring(2);
@@ -202,38 +316,32 @@ function processCSV(text) {
         const chosenPhone = targetIdx !== -1 ? phones[targetIdx] : phones[0];
         const remaining = phones.filter((_, i) => i !== targetIdx).join(', ');
 
-        const especialidade = detectEspecialidade(vals[idxEspecialidade]);
-        const unidade = detectLocation(vals[idxUnidade]);
+        const especialidade = detectEspecialidade(row.especialidade);
+        const unidade = detectLocation(row.unidade);
 
         const tags = [dateVal, 'Automação'];
         if (especialidade) tags.push(especialidade);
         if (unidade) tags.push(unidade);
 
-        const hour = parseHour(vals[idxHorario]);
+        const hour = parseHour(row.horario);
         if (hour) tags.push(`Consulta${hour}h`);
 
-        resultData.push({
-            Nome: paciente,
+        result.push({
+            Nome: row.paciente,
             Telefone: chosenPhone,
             Etiquetas: tags.join(', '),
             NotasInternas: remaining ? `Outros telefones: ${remaining}` : ''
         });
-    }
-
-    if (!resultData.length) { showStatus('Nenhum registro válido encontrado.', 'error'); return; }
-
-    applyGrouping();
-    renderPreview(resultData);
-    dlCsvBtn.disabled = false;
-    showStatus(`${resultData.length} registros convertidos.`, 'success');
+    });
+    applyGrouping(result, groupNames);
+    return result;
 }
 
-function applyGrouping() {
-    const rawNames = groupNamesInput.value.split(',').map(s => s.trim()).filter(Boolean);
-    if (rawNames.length === 0 || rawNames.length > resultData.length) return;
+function applyGrouping(rows, rawNames) {
+    if (rawNames.length === 0 || rawNames.length > rows.length) return;
 
-    const groupSize = Math.ceil(resultData.length / rawNames.length);
-    resultData.forEach((row, index) => {
+    const groupSize = Math.ceil(rows.length / rawNames.length);
+    rows.forEach((row, index) => {
         const groupIndex = Math.floor(index / groupSize);
         const tag = formatGroupTag(rawNames[groupIndex]);
         const etq = row.Etiquetas || '';
@@ -257,7 +365,7 @@ function parseHour(raw) {
     return m[1].padStart(2, '0');
 }
 
-function renderPreview(data) {
+function renderPreview(data, summaries) {
     previewContainer.innerHTML = '';
     const table = document.createElement('table');
     const thead = document.createElement('thead');
@@ -277,18 +385,18 @@ function renderPreview(data) {
     });
     table.appendChild(tbody);
     previewContainer.appendChild(table);
-    summary.textContent = `${data.length} registros · exibindo 5`;
+
+    const parts = summaries.map(s => `${s.count} · ${s.name}`);
+    const shownSuffix = data.length > 5 ? ` · exibindo 5 de ${data.length}` : '';
+    summary.textContent = `${data.length} registros no total${shownSuffix}${parts.length ? ' — ' + parts.join(' | ') : ''}`;
 }
 
 dlCsvBtn.addEventListener('click', () => {
     const headers = ['Nome', 'Telefone', 'Etiquetas', 'Notas Internas'];
     const fieldMap = { 'Notas Internas': 'NotasInternas' };
     const csv = generateCSV(resultData, headers, fieldMap);
-    const tags = resultData[0].Etiquetas.split(', ').map(t => t.trim());
-    const date = tags[0];
-    const especialidade = (tags[2] || '').replace(/[^a-zA-Z0-9_\-]/g, '');
-    const unidade = (tags[3] || '').replace(/[^a-zA-Z0-9_\-]/g, '');
-    const name = `nao_consultados_${date}_${unidade}_${especialidade}.csv`;
+    const date = refDateInput.value;
+    const name = `nao_consultados_${date}_concat.csv`;
     const blob = new Blob([new Uint8Array([0xEF,0xBB,0xBF]), csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = name; a.click();
