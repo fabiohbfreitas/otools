@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Mesclar XLSX → CSV</title>
+<style>
+:root {
+    --bg: #0a0a0a; --card: #121212; --border: #262626; --border-focus: #fff;
+    --text: #e5e5e5; --muted: #a3a3a3; --accent: #fff; --dim: #f5f5f5;
+    --sec-bg: #1a1a1a; --sec-hover: #2a2a2a; --success: #4ade80; --error: #f87171;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5;
+    width: 560px; margin: 2rem auto; padding: 1rem;
+}
+h1 { font-size: 1.1rem; font-weight: 700; color: var(--accent); margin-bottom: 1rem; }
+.card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+    padding: 1rem; display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1rem;
+}
+.field { display: flex; flex-direction: column; gap: .35rem; }
+label { font-size: .65rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+input {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: .4rem; font-family: inherit; font-size: .8rem; border-radius: 4px;
+    outline: none; width: 100%;
+}
+input:focus { border-color: var(--border-focus); }
+button {
+    background: var(--accent); color: var(--bg); border: 1px solid var(--accent);
+    border-radius: 4px; padding: .4rem .8rem; font-weight: 600; font-size: .75rem;
+    cursor: pointer; transition: background .15s, border-color .15s;
+}
+button:hover:not(:disabled) { background: var(--dim); border-color: var(--dim); }
+button:disabled { opacity: .25; cursor: not-allowed; }
+button.sec { background: var(--sec-bg); border-color: var(--border); color: var(--text); }
+button.sec:hover:not(:disabled) { background: var(--sec-hover); border-color: var(--muted); }
+button.btn-remove {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    padding: .1rem .4rem; font-size: .65rem; flex-shrink: 0;
+}
+button.btn-remove:hover:not(:disabled) { background: var(--sec-hover); color: var(--text); }
+.file-row {
+    display: flex; flex-direction: column; gap: .35rem;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: .6rem;
+}
+.file-row-header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.file-name { font-size: .75rem; font-weight: 600; color: var(--text); word-break: break-all; }
+.wrap { overflow-x: auto; max-height: 220px; }
+table { width: 100%; border-collapse: collapse; text-align: left; font-size: .75rem; }
+th, td { padding: .5rem .6rem; border-bottom: 1px solid var(--border); }
+th { background: rgba(255,255,255,.02); color: var(--text); font-weight: 600; white-space: nowrap; }
+.empty { padding: 1.5rem; text-align: center; color: var(--muted); }
+.summary { font-size: .75rem; color: var(--muted); text-align: center; }
+.status { text-align: center; min-height: 1.25rem; font-size: .8rem; font-weight: 500; }
+.status-success { color: var(--success); }
+.status-error { color: var(--error); }
+</style>
+</head>
+<body>
+
+<h1>Mesclar XLSX → CSV</h1>
+
+<div class="card">
+    <div class="field">
+        <label for="xlsxFile">Arquivos XLSX (mesmas colunas)</label>
+        <input type="file" id="xlsxFile" accept=".xlsx,.xls" multiple>
+    </div>
+    <div id="fileRows"></div>
+    <button id="mergeBtn" class="sec" disabled>Mesclar</button>
+</div>
+
+<div class="card">
+    <div class="wrap" id="previewContainer">
+        <div class="empty">Carregue um ou mais XLSX para visualizar a prévia.</div>
+    </div>
+    <div class="summary" id="summary"></div>
+</div>
+
+<div style="display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap">
+    <button id="dlCsvBtn" class="sec" disabled>CSV</button>
+</div>
+
+<div class="status" id="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+let sources = [];
+let mergedData = [];
+let mergedHeaders = [];
+let fileSummaries = [];
+let statusTimeout;
+let conversionToken = 0;
+
+const xlsxFile = document.getElementById('xlsxFile');
+const fileRowsContainer = document.getElementById('fileRows');
+const mergeBtn = document.getElementById('mergeBtn');
+const previewContainer = document.getElementById('previewContainer');
+const summary = document.getElementById('summary');
+const dlCsvBtn = document.getElementById('dlCsvBtn');
+const statusEl = document.getElementById('status');
+
+xlsxFile.addEventListener('change', buildSourceRows);
+mergeBtn.addEventListener('click', runMerge);
+
+function buildSourceRows() {
+    const files = Array.from(xlsxFile.files);
+    if (!files.length) return;
+    sources = files.map(file => ({ file }));
+    xlsxFile.value = '';
+    renderFileRows();
+    mergeBtn.disabled = sources.length === 0;
+    resetResults();
+    runMerge();
+}
+
+function renderFileRows() {
+    fileRowsContainer.innerHTML = '';
+    sources.forEach((source, index) => {
+        const row = document.createElement('div');
+        row.className = 'file-row';
+
+        const header = document.createElement('div');
+        header.className = 'file-row-header';
+        const name = document.createElement('span');
+        name.className = 'file-name';
+        name.textContent = source.file.name;
+        const rmBtn = document.createElement('button');
+        rmBtn.className = 'btn-remove';
+        rmBtn.textContent = '\u2715';
+        rmBtn.title = 'Remover arquivo';
+        rmBtn.addEventListener('click', () => {
+            sources.splice(index, 1);
+            renderFileRows();
+            mergeBtn.disabled = sources.length === 0;
+            resetResults();
+            runMerge();
+        });
+        header.appendChild(name);
+        header.appendChild(rmBtn);
+
+        row.appendChild(header);
+        fileRowsContainer.appendChild(row);
+    });
+}
+
+function resetResults() {
+    mergedData = [];
+    mergedHeaders = [];
+    fileSummaries = [];
+    dlCsvBtn.disabled = true;
+    previewContainer.innerHTML = '<div class="empty">Carregue um ou mais XLSX para visualizar a prévia.</div>';
+    summary.textContent = '';
+}
+
+async function runMerge() {
+    if (!sources.length) return;
+    if (typeof XLSX === 'undefined') {
+        showStatus('Biblioteca XLSX não carregada (verifique a conexão).', 'error');
+        return;
+    }
+
+    const token = ++conversionToken;
+    const sheets = [];
+    const summaries = [];
+
+    for (const source of sources) {
+        const data = await readArrayBuffer(source.file);
+        if (token !== conversionToken) return;
+        if (!data) {
+            showStatus(`Arquivo "${source.file.name}": não foi possível ler.`, 'error');
+            return;
+        }
+
+        let workbook;
+        try {
+            workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
+        } catch (e) {
+            showStatus(`Arquivo "${source.file.name}": não é um XLSX válido.`, 'error');
+            return;
+        }
+        if (!workbook.SheetNames.length) {
+            showStatus(`Arquivo "${source.file.name}": sem planilhas.`, 'error');
+            return;
+        }
+
+        const ws = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '', blankrows: false });
+        if (!rows.length) {
+            showStatus(`Arquivo "${source.file.name}": planilha sem dados.`, 'error');
+            return;
+        }
+
+        sheets.push(rows);
+        summaries.push({ name: source.file.name, rows: rows.length - 1, cols: rows[0].length });
+    }
+
+    if (token !== conversionToken) return;
+
+    mergedHeaders = sheets[0][0];
+    for (let i = 1; i < sheets.length; i++) {
+        const cur = sheets[i][0];
+        if (cur.length !== mergedHeaders.length || cur.some((c, j) => String(c).trim() !== String(mergedHeaders[j]).trim())) {
+            const fileName = summaries[i].name;
+            showStatus(`Arquivo "${fileName}": colunas diferentes do primeiro arquivo.`, 'error');
+            return;
+        }
+    }
+
+    const combined = [mergedHeaders];
+    sheets.forEach((rows, si) => {
+        for (let r = 1; r < rows.length; r++) {
+            const row = [];
+            for (let c = 0; c < mergedHeaders.length; c++) {
+                row.push(rows[r][c] == null ? '' : String(rows[r][c]));
+            }
+            combined.push(row);
+        }
+    });
+
+    mergedData = combined.slice(1);
+    fileSummaries = summaries;
+    renderPreview(combined, summaries);
+    dlCsvBtn.disabled = false;
+    const total = mergedData.length;
+    showStatus(`${total} registros mesclados.`, 'success');
+}
+
+function readArrayBuffer(file) {
+    return new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => resolve(null);
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+function renderPreview(data, summaries) {
+    previewContainer.innerHTML = '';
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    data[0].forEach(t => {
+        const th = document.createElement('th'); th.textContent = t; hr.appendChild(th);
+    });
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    data.slice(1, 6).forEach(row => {
+        const tr = document.createElement('tr');
+        for (let c = 0; c < data[0].length; c++) {
+            const td = document.createElement('td');
+            td.textContent = row[c] == null ? '—' : row[c];
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    previewContainer.appendChild(table);
+
+    const parts = summaries.map(s => `${s.rows} · ${s.name}`);
+    const shownSuffix = data.length - 1 > 5 ? ` · exibindo 5 de ${data.length - 1}` : '';
+    summary.textContent = `${data.length - 1} registros no total${shownSuffix}${parts.length ? ' — ' + parts.join(' | ') : ''}`;
+}
+
+dlCsvBtn.addEventListener('click', () => {
+    const csv = generateCSV([mergedHeaders, ...mergedData]);
+    const date = new Date().toISOString().split('T')[0];
+    const name = `merge_xlsx_${date}.csv`;
+    const blob = new Blob([new Uint8Array([0xEF,0xBB,0xBF]), csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+    URL.revokeObjectURL(url);
+    showStatus(`"${name}" baixado!`, 'success');
+});
+
+const CRLF = '\r\n';
+
+function escapeField(f) {
+    const str = typeof f === 'string' ? f : String(f ?? '');
+    return `"${str.replace(/"/g, '""')}"`;
+}
+
+function generateCSV(rows) {
+    if (!rows.length) return '';
+    return rows.map(row => row.map(escapeField).join(',')).join(CRLF);
+}
+
+function showStatus(text, type) {
+    clearTimeout(statusTimeout);
+    statusEl.textContent = text;
+    statusEl.className = 'status';
+    if (type) statusEl.classList.add('status-' + type);
+    statusTimeout = setTimeout(() => {
+        if (statusEl.textContent === text) { statusEl.textContent = ''; statusEl.className = 'status'; }
+    }, 4000);
+}
+</script>
+</body>
+</html>
