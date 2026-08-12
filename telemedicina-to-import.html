@@ -117,10 +117,9 @@ const statusEl = document.getElementById('status');
 
 /* ---- INIT ---- */
 const today = new Date();
-const next = new Date(today);
-next.setDate(next.getDate() + 1);
-while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
-refDate.value = next.toISOString().split('T')[0];
+refDate.value = new Date(today - today.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+localInput.value = 'Telemedicina';
+especInput.value = 'Ortopedia';
 
 /* ---- FILE LOAD ---- */
 csvFile.addEventListener('change', () => {
@@ -194,8 +193,6 @@ function processCSV(text) {
         return {
             Nome: r.paciente,
             Telefone: chosenPhone,
-            Email: '',
-            Instagram: '',
             Etiquetas: etiquetasBase,
             NotasInternas: remaining ? `Outros telefones: ${remaining}` : ''
         };
@@ -257,7 +254,7 @@ function renderPreview(data) {
 
 /* ---- DOWNLOAD ---- */
 dlCsvBtn.addEventListener('click', () => {
-    const headers = ['Nome', 'Telefone', 'Email', 'Instagram', 'Etiquetas', 'Notas Internas'];
+    const headers = ['Nome', 'Telefone', 'Etiquetas', 'Notas Internas'];
     const fieldMap = { 'Notas Internas': 'NotasInternas' };
     const csv = generateCSV(processedData, headers, fieldMap);
     const name = `whatsapp_import_${refDate.value}.csv`;
