@@ -283,12 +283,23 @@ function standardiseDataStructure(rawObjectsList) {
         const keyNome = Object.keys(obj).find(k => k.toLowerCase() === 'nome') || '';
         const keyTelefones = Object.keys(obj).find(k => k.toLowerCase().includes('telefone')) || '';
         const keyProcedimento = Object.keys(obj).find(k => k.toLowerCase() === 'procedimento') || '';
+        const keyDataHora = Object.keys(obj).find(k => {
+            const lk = k.toLowerCase();
+            return lk.includes('data/hora') || (lk.includes('hora') && lk.includes('data'));
+        }) || '';
         return {
             Nome: keyNome ? obj[keyNome] : '',
             Telefones: keyTelefones ? obj[keyTelefones] : '',
-            Procedimento: keyProcedimento ? obj[keyProcedimento] : ''
+            Procedimento: keyProcedimento ? obj[keyProcedimento] : '',
+            Hora: keyDataHora ? extractHora(obj[keyDataHora]) : ''
         };
     });
+}
+
+function extractHora(value) {
+    const m = String(value || '').match(/(\d{1,2}):(\d{2})/);
+    if (!m) return '';
+    return `${m[1].padStart(2, '0')}:${m[2]}`;
 }
 
 function extractPhones(phoneStr) {
@@ -356,7 +367,8 @@ function runAllPipelines() {
             Nome: nome,
             Telefone: chosenPhone,
             Etiquetas: etiquetas,
-            NotasInternas: notasInternas
+            NotasInternas: notasInternas,
+            Hora: row.Hora
         };
     });
 
@@ -370,7 +382,7 @@ function runAllPipelines() {
             Paciente: nome,
             Telefone: allPhonesParsed,
             Data: formattedDate,
-            Horário: '',
+            Horário: row.Hora,
             Unidade: chosenLocal,
             Especialidade: chosenEspecialidade,
             Situação: 'a confirmar',
@@ -409,6 +421,14 @@ function downloadImportedData(format) {
             }
             return row;
         });
+    } else {
+        finalDataset = finalDataset.map(row => {
+            const tag = formatAgendaTag(row.Hora);
+            if (!tag) return row;
+            const etq = row.Etiquetas || '';
+            row.Etiquetas = etq ? `${etq}, ${tag}` : tag;
+            return row;
+        });
     }
 
     triggerImportedFileSave(finalDataset, filenameBase, format);
@@ -444,7 +464,7 @@ function downloadTransformedData() {
         'Situação': row.Situação,
         'Observação': row.Observação
     }));
-    downloadAsExcel(structured, `${filenameBase}_ESTRUTURADO.xlsx`);
+    downloadAsExcel(structured, `${filenameBase}_DadosCompletos.xlsx`);
 }
 
 /* ==========================================
@@ -503,7 +523,7 @@ function parseNaoConsultadosHTML(confirmHTMLs) {
         const situacaoQualifier = getSituacaoQualifier(tds);
         if (!hasChave && !situacaoQualifier) return;
 
-        let solicitacao = '', paciente = '', telefones = '', data = '';
+        let solicitacao = '', paciente = '', telefones = '', data = '', horario = '';
 
         tds.forEach(td => {
             const bold = td.querySelector('b');
@@ -517,6 +537,7 @@ function parseNaoConsultadosHTML(confirmHTMLs) {
             else if (label.includes('Data/Hora')) {
                 const m = value.match(/(\d{2}\/\d{2}\/\d{4})/);
                 if (m) data = m[1];
+                horario = extractHora(value);
             }
             if (!solicitacao && label === '' && /^\d{6,}$/.test(bold.textContent.trim())) {
                 solicitacao = bold.textContent.trim();
@@ -535,7 +556,7 @@ function parseNaoConsultadosHTML(confirmHTMLs) {
             Paciente: paciente,
             Telefone: telefones === '---' ? '' : telefones.replace(/\n/g, ', '),
             Data: data,
-            Horário: '',
+            Horário: horario,
             Unidade: localSel.value,
             Especialidade: deriveEspecialidade(procedimento),
             Situação: hasChave ? 'Não consultado' : situacaoQualifier,
@@ -726,6 +747,13 @@ function getNextBusinessDay(date) {
 function formatGroupTag(name) {
     if (/^\d+$/.test(name)) return `Consulta${name.padStart(2, '0')}h`;
     return 'Consulta' + name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+}
+
+function formatAgendaTag(hora) {
+    if (!hora) return '';
+    const m = hora.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return '';
+    return `Agenda${m[1]}h${m[2]}`;
 }
 
 // Restore accumulated Não Consultados across popup sessions (after all consts are initialized)
