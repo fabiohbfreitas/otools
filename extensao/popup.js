@@ -753,7 +753,8 @@ function formatAgendaTag(hora) {
     if (!hora) return '';
     const m = hora.match(/^(\d{1,2}):(\d{2})$/);
     if (!m) return '';
-    return `Agenda${m[1]}h${m[2]}`;
+    const minutes = m[2];
+    return minutes === '00' ? `Agenda${m[1]}h` : `Agenda${m[1]}h${minutes}`;
 }
 
 // Restore accumulated Não Consultados across popup sessions (after all consts are initialized)
