@@ -221,10 +221,51 @@ The date tag is the full ISO date `YYYY-MM-DD`. Resolution order per row:
 | `process <file.xlsx>` | Process a single file. |
 | `process <folder/>` | Process every `.xlsx` in the folder. |
 | `process --daily <file or folder>` | Also emit combined daily files (`YYYY-MM-DD.csv`). |
+| `process --validate <file or folder>` | Compare generated outputs against inputs; full report. |
+| `process --validate --daily <file or folder>` | Also validate the combined daily files. |
 | `process --selftest` | Run built-in assertions; requires no input file. |
 
 When given a folder, all `.xlsx` files inside it are processed together and output goes
 into that same folder.
+
+---
+
+## 6.1 Validation mode (`--validate`)
+
+Re-derives the expected output rows from the input spreadsheets (using the exact same
+rules as the pipeline) and compares them against the already-generated CSV files.
+
+### What it detects
+
+| Category | Meaning |
+|---|---|
+| `FALTANDO` (missing) | An input row that should have produced an output row is absent from the CSV. |
+| `EXTRA` | An output row with no matching input row. |
+| `DIFF <campo>` | A matched row whose field value differs from the expected value. Fields checked: `Nome`, `Telefone`, `Etiquetas`, `Notas Internas`. |
+
+### Matching
+
+- Input rows are matched to output rows by **`(Nome, date)`** — the patient name plus
+  the ISO date from the first tag of `Etiquetas`.
+- Matching is **multiset-based**: each expected row pairs with exactly one output row;
+  leftover output rows are `EXTRA`, unmatched input rows are `FALTANDO`.
+- Duplicate `(Nome, date)` pairs in one sheet are handled by this pairing.
+
+### Report
+
+- Printed to the terminal and saved as `validation-report.md` in the output folder
+  (overwritten each run).
+- Per input file and per sheet/day: counts `OK | DIFERENTE | FALTANDO | EXTRA |
+  SEM DATA`, then one line per difference with the spreadsheet row number:
+  - `DIFF <campo> linha N: esperado 'X', obtido 'Y'`
+  - `FALTANDO linha N: <Nome> (<date>) - tel <telefone>`
+  - `EXTRA linha N: <Nome> (<date>) - tel <telefone>`
+- `SEM DATA` rows (intentionally skipped, see 5.1) are reported as informational counts
+  only and never as differences.
+- A missing output file is reported (`arquivo não encontrado`) and all its expected rows
+  count as `FALTANDO`.
+- **Exit code:** `0` when no `DIFERENTE`/`FALTANDO`/`EXTRA` is found; `1` otherwise.
+- Requires the outputs to exist (run the normal pipeline first).
 
 ---
 
@@ -265,3 +306,6 @@ into that same folder.
 | File with unknown specialty | Processing fails with an error naming the file. |
 | Multiple phones in one cell | Pick mobile (9-digit starting with `9`) else first; rest to Notas Internas. |
 | Date stored as datetime vs string | Both handled and normalized to `YYYY-MM-DD`. |
+| Validation: duplicate (Nome, date) in one sheet | Paired multiset-wise; leftovers reported as EXTRA. |
+| Validation: output file missing | Reported `arquivo não encontrado`; all expected rows counted as FALTANDO. |
+| Validation: intentionally skipped rows | Informational `SEM DATA` count only, never a difference. |

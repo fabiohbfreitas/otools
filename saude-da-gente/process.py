@@ -14,12 +14,15 @@ Usage:
   uv run process.py <arquivo.xlsx>        # single file
   uv run process.py <pasta/>              # process every *.xlsx in the folder
   uv run process.py --daily <pasta/>      # also write combined daily files (2026-08-24.csv)
+  uv run process.py --validate <pasta/>   # compare outputs against inputs, full report
+  uv run process.py --validate --daily <pasta/>  # also validate the combined daily files
   uv run process.py --selftest
 """
 import csv
 import re
 import sys
 import unicodedata
+from collections import defaultdict, deque
 from datetime import datetime
 from pathlib import Path
 
@@ -208,6 +211,32 @@ def parse_sheet_date(sheet_name):
         return ""
 
 
+def build_sheet_rows(ws, cols, sheet_date, canonical):
+    """Build output rows from one worksheet.
+
+    Returns (rows, skipped) where rows is a list of
+    (output_dict, spreadsheet_row_number, date) and skipped is the number of
+    rows dropped because they had no usable date.
+    """
+    rows = []
+    skipped = 0
+    for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
+        nome = row[cols["nome"]]
+        if nome is None or not str(nome).strip():
+            continue
+        nome = str(nome).strip()
+        date = parse_date(row[cols["data"]])
+        if not date and sheet_date:
+            date = sheet_date
+        if not date:
+            skipped += 1
+            continue
+        telefone = str(row[cols["telefone"]]) if row[cols["telefone"]] is not None else ""
+        out = build_row(nome, telefone, canonical, date)
+        rows.append((out, 2 + i, date))
+    return rows, skipped
+
+
 def process_file(file_path, output_base, daily_rows=None):
     workbook = openpyxl.load_workbook(file_path, data_only=True)
     canonical = resolve_specialty(file_path.stem, workbook)
@@ -223,35 +252,20 @@ def process_file(file_path, output_base, daily_rows=None):
         except ValueError:
             continue
         sheet_date = parse_sheet_date(sheet)
-        rows = []
-        skipped = 0
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            nome = row[cols["nome"]]
-            if nome is None or not str(nome).strip():
-                continue
-            nome = str(nome).strip()
-            date = parse_date(row[cols["data"]])
-            if not date and sheet_date:
-                date = sheet_date
-            if not date:
-                skipped += 1
-                continue
-            telefone = str(row[cols["telefone"]]) if row[cols["telefone"]] is not None else ""
-            out = build_row(nome, telefone, canonical, date)
-            rows.append(out)
-            if daily_rows is not None:
-                daily_rows.setdefault(date, []).append(out)
-
-        if not rows and skipped == 0:
+        sheet_rows, skipped = build_sheet_rows(ws, cols, sheet_date, canonical)
+        if not sheet_rows and skipped == 0:
             continue
+        if daily_rows is not None:
+            for out, _, date in sheet_rows:
+                daily_rows.setdefault(date, []).append(out)
 
         folder = output_base / sanitize_folder(sheet)
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{canonical}.csv"
         if path.exists():
             path.unlink()
-        write_csv_rows(rows, path)
-        created.append((len(rows), path, skipped))
+        write_csv_rows([out for out, _, _ in sheet_rows], path)
+        created.append((len(sheet_rows), path, skipped))
     return canonical, created
 
 
@@ -263,6 +277,155 @@ def write_csv_rows(rows, path):
         )
         writer.writeheader()
         writer.writerows(rows)
+
+
+FIELDS = ["Nome", "Telefone", "Etiquetas", "Notas Internas"]
+
+
+def etiquetas_date(row):
+    et = row.get("Etiquetas", "")
+    return et.split(",")[0].strip() if et else ""
+
+
+def read_csv_rows(path):
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        return [(row, 2 + i) for i, row in enumerate(reader)]
+
+
+def compare_sheet(expected, actual):
+    """Diff expected rows against actual CSV rows.
+
+    expected: list of (output_dict, spreadsheet_row_number, date).
+    actual:   list of (csv_dict, csv_line_number).
+
+    Returns (missing, extra, diffs):
+      missing = [(spreadsheet_row_number, output_dict)]
+      extra   = [(csv_line_number, csv_dict)]
+      diffs   = [(spreadsheet_row_number, field, expected_value, actual_value)]
+    """
+    buckets = defaultdict(deque)
+    for idx, (arow, _) in enumerate(actual):
+        buckets[(arow.get("Nome", ""), etiquetas_date(arow))].append(idx)
+
+    matched = set()
+    missing = []
+    diffs = []
+    for out, row_num, date in expected:
+        q = buckets.get((out["Nome"], date))
+        if q:
+            idx = q.popleft()
+            matched.add(idx)
+            arow = actual[idx][0]
+            for field in FIELDS:
+                if out[field] != arow.get(field, ""):
+                    diffs.append((row_num, field, out[field], arow.get(field, "")))
+        else:
+            missing.append((row_num, out))
+    extra = [(2 + idx, arow) for idx, (arow, _) in enumerate(actual) if idx not in matched]
+    return missing, extra, diffs
+
+
+def _report_sheet(lines, totals, sheet_label, expected, csv_path):
+    if not csv_path.exists():
+        totals["no_file"] += 1
+        totals["missing"] += len(expected)
+        lines.append(f"  {sheet_label}: arquivo não encontrado: {csv_path.name}")
+        lines.append(f"    FALTANDO {len(expected)} linha(s)")
+        return
+    actual = read_csv_rows(csv_path)
+    missing, extra, diffs = compare_sheet(expected, actual)
+    diff_rows = {rn for rn, _, _, _ in diffs}
+    ok = len(expected) - len(missing) - len(diff_rows)
+    totals["ok"] += ok
+    totals["diff"] += len(diff_rows)
+    totals["missing"] += len(missing)
+    totals["extra"] += len(extra)
+    lines.append(
+        f"  {sheet_label}: OK {ok} | DIFERENTE {len(diff_rows)} | "
+        f"FALTANDO {len(missing)} | EXTRA {len(extra)}"
+    )
+    for row_num, field, exp, act in diffs:
+        lines.append(f"    DIFF {field} linha {row_num}: esperado '{exp}', obtido '{act}'")
+    for row_num, out in missing:
+        lines.append(
+            f"    FALTANDO linha {row_num}: {out['Nome']} ({etiquetas_date(out)}) - "
+            f"tel {out['Telefone']}"
+        )
+    for csv_line, arow in extra:
+        lines.append(
+            f"    EXTRA linha {csv_line}: {arow.get('Nome', '')} "
+            f"({etiquetas_date(arow)}) - tel {arow.get('Telefone', '')}"
+        )
+
+
+def validate(path, daily):
+    if path.is_dir():
+        files = sorted(path.glob("*.xlsx"))
+        output_base = path
+    else:
+        files = [path]
+        output_base = path.parent
+    if not files:
+        print("Nenhum arquivo xlsx encontrado.")
+        return 1
+
+    lines = []
+    totals = {"ok": 0, "diff": 0, "missing": 0, "extra": 0, "skipped": 0, "no_file": 0}
+    daily_expected = {}
+
+    for f in files:
+        workbook = openpyxl.load_workbook(f, data_only=True)
+        canonical = resolve_specialty(f.stem, workbook)
+        lines.append(f"{f.name}  ->  {canonical}")
+        for sheet in workbook.sheetnames:
+            ws = workbook[sheet]
+            header = [c.value for c in ws[1]] if ws.max_row >= 1 else []
+            if not header or header[0] is None:
+                continue
+            try:
+                cols = resolve_columns(header)
+            except ValueError:
+                continue
+            sheet_date = parse_sheet_date(sheet)
+            sheet_rows, skipped = build_sheet_rows(ws, cols, sheet_date, canonical)
+            if not sheet_rows and skipped == 0:
+                continue
+            totals["skipped"] += skipped
+            if daily:
+                for out, row_num, date in sheet_rows:
+                    daily_expected.setdefault(date, []).append((out, row_num, date))
+            _report_sheet(
+                lines, totals, sheet,
+                sheet_rows,
+                output_base / sanitize_folder(sheet) / f"{canonical}.csv",
+            )
+
+    if daily:
+        lines.append("Diário:")
+        for date in sorted(daily_expected):
+            _report_sheet(
+                lines, totals, f"{date}.csv",
+                daily_expected[date],
+                output_base / f"{date}.csv",
+            )
+
+    lines.append(
+        f"\nTotal: OK {totals['ok']} | DIFERENTE {totals['diff']} | "
+        f"FALTANDO {totals['missing']} | EXTRA {totals['extra']} | "
+        f"SEM DATA {totals.get('skipped', 0)}"
+    )
+    if totals["no_file"]:
+        lines.append(f"Aviso: {totals['no_file']} arquivo(s) de saída não encontrado(s).")
+
+    report_path = output_base / "validation-report.md"
+    with open(report_path, "w", encoding="utf-8") as fp:
+        fp.write("# Relatório de validação\n\n")
+        fp.write("\n".join(lines))
+        fp.write("\n")
+    print("\n".join(lines))
+    print(f"\nRelatório salvo em: {report_path}")
+    return 1 if (totals["diff"] or totals["missing"] or totals["extra"]) else 0
 
 
 def selftest():
@@ -293,6 +456,24 @@ def selftest():
         "Etiquetas": "2026-08-24, Automação, Cardiologia, SaudeDaGente, Marajo",
         "Notas Internas": "Outros telefones: (61) 3622-3421",
     }
+    assert etiquetas_date({"Etiquetas": "2026-08-24, Automação, Cardiologia, SaudeDaGente, Marajo"}) == "2026-08-24"
+    expected = [
+        (build_row("A", "(61) 99999-0001", "Cardiologia", "2026-08-24"), 3, "2026-08-24"),
+        (build_row("B", "(61) 99999-0002", "Cardiologia", "2026-08-24"), 4, "2026-08-24"),
+    ]
+    actual = [
+        (build_row("A", "(61) 99999-0001", "Cardiologia", "2026-08-24"), 2),
+        (build_row("C", "(61) 99999-0003", "Cardiologia", "2026-08-24"), 3),
+    ]
+    missing, extra, diffs = compare_sheet(expected, actual)
+    assert len(missing) == 1 and missing[0][1]["Nome"] == "B"
+    assert len(extra) == 1 and extra[0][1]["Nome"] == "C"
+    assert diffs == []
+    missing, extra, diffs = compare_sheet(expected[:1], [
+        (build_row("A", "(61) 99999-9999", "Cardiologia", "2026-08-24"), 2),
+    ])
+    assert not missing and not extra
+    assert any(f == "Telefone" for _, f, _, _ in diffs)
     print("selftest ok")
 
 
@@ -304,10 +485,13 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     daily = "--daily" in sys.argv
     if len(args) < 1:
-        print("Uso: uv run process.py [--daily] <arquivo.xlsx|pasta>")
+        print("Uso: uv run process.py [--validate] [--daily] <arquivo.xlsx|pasta>")
         sys.exit(1)
 
     path = Path(args[0])
+    if "--validate" in sys.argv:
+        sys.exit(validate(path, daily))
+
     if path.is_dir():
         files = sorted(path.glob("*.xlsx"))
         output_base = path
