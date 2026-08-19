@@ -14,6 +14,7 @@ Usage:
   uv run process.py <arquivo.xlsx>        # single file
   uv run process.py <pasta/>              # process every *.xlsx in the folder
   uv run process.py --daily <pasta/>      # also write combined daily files (2026-08-24.csv)
+  uv run process.py --verbose <pasta/>    # extra per-sheet detail (columns, skips)
   uv run process.py --validate <pasta/>   # compare outputs against inputs, full report
   uv run process.py --validate --daily <pasta/>  # also validate the combined daily files
   uv run process.py --selftest
@@ -214,12 +215,14 @@ def parse_sheet_date(sheet_name):
 def build_sheet_rows(ws, cols, sheet_date, canonical):
     """Build output rows from one worksheet.
 
-    Returns (rows, skipped) where rows is a list of
-    (output_dict, spreadsheet_row_number, date) and skipped is the number of
-    rows dropped because they had no usable date.
+    Returns (rows, skipped, skipped_details) where rows is a list of
+    (output_dict, spreadsheet_row_number, date), skipped is the number of
+    rows dropped because they had no usable date, and skipped_details is a
+    list of (spreadsheet_row_number, raw_data_value) for those dropped rows.
     """
     rows = []
     skipped = 0
+    skipped_details = []
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
         nome = row[cols["nome"]]
         if nome is None or not str(nome).strip():
@@ -230,14 +233,15 @@ def build_sheet_rows(ws, cols, sheet_date, canonical):
             date = sheet_date
         if not date:
             skipped += 1
+            skipped_details.append((2 + i, row[cols["data"]]))
             continue
         telefone = str(row[cols["telefone"]]) if row[cols["telefone"]] is not None else ""
         out = build_row(nome, telefone, canonical, date)
         rows.append((out, 2 + i, date))
-    return rows, skipped
+    return rows, skipped, skipped_details
 
 
-def process_file(file_path, output_base, daily_rows=None):
+def process_file(file_path, output_base, daily_rows=None, verbose=False):
     workbook = openpyxl.load_workbook(file_path, data_only=True)
     canonical = resolve_specialty(file_path.stem, workbook)
     created = []
@@ -245,14 +249,18 @@ def process_file(file_path, output_base, daily_rows=None):
         ws = workbook[sheet]
         header = [c.value for c in ws[1]] if ws.max_row >= 1 else []
         if not header or header[0] is None:
+            if verbose:
+                print(f"  {sheet}: planilha vazia, ignorada")
             continue
 
         try:
             cols = resolve_columns(header)
         except ValueError:
+            if verbose:
+                print(f"  {sheet}: cabeçalho não resolvido, ignorada")
             continue
         sheet_date = parse_sheet_date(sheet)
-        sheet_rows, skipped = build_sheet_rows(ws, cols, sheet_date, canonical)
+        sheet_rows, skipped, skipped_details = build_sheet_rows(ws, cols, sheet_date, canonical)
         if not sheet_rows and skipped == 0:
             continue
         if daily_rows is not None:
@@ -266,6 +274,17 @@ def process_file(file_path, output_base, daily_rows=None):
             path.unlink()
         write_csv_rows([out for out, _, _ in sheet_rows], path)
         created.append((len(sheet_rows), path, skipped))
+        if verbose:
+            cols_str = ", ".join(f"{k}={v}" for k, v in sorted(cols.items()))
+            print(f"  {sheet}: colunas {cols_str} | {len(sheet_rows)} linhas | {skipped} sem data")
+            if skipped_details:
+                cap = 10
+                shown = skipped_details[:cap]
+                for row_num, raw in shown:
+                    print(f"    sem data: linha {row_num} ({raw})")
+                rest = len(skipped_details) - len(shown)
+                if rest > 0:
+                    print(f"    ... mais {rest} linha(s) sem data")
     return canonical, created
 
 
@@ -388,7 +407,7 @@ def validate(path, daily):
             except ValueError:
                 continue
             sheet_date = parse_sheet_date(sheet)
-            sheet_rows, skipped = build_sheet_rows(ws, cols, sheet_date, canonical)
+            sheet_rows, skipped, _ = build_sheet_rows(ws, cols, sheet_date, canonical)
             if not sheet_rows and skipped == 0:
                 continue
             totals["skipped"] += skipped
@@ -485,10 +504,11 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     daily = "--daily" in sys.argv
     if len(args) < 1:
-        print("Uso: uv run process.py [--validate] [--daily] <arquivo.xlsx|pasta>")
+        print("Uso: uv run process.py [--validate] [--daily] [--verbose] <arquivo.xlsx|pasta>")
         sys.exit(1)
 
     path = Path(args[0])
+    verbose = "--verbose" in sys.argv
     if "--validate" in sys.argv:
         sys.exit(validate(path, daily))
 
@@ -508,7 +528,7 @@ def main():
     grand_total = 0
     grand_skipped = 0
     for f in files:
-        canonical, created = process_file(f, output_base, daily_rows)
+        canonical, created = process_file(f, output_base, daily_rows, verbose)
         total = sum(n for n, _, _ in created)
         skipped = sum(s for _, _, s in created)
         print(f"{total:5d}  {f.name}  ->  {canonical}")
