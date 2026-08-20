@@ -147,7 +147,7 @@ input *contains* the token OR the token *contains* the normalized input.
 | `ORTOPEDIA`, `ORTOPEDISTA` | `Ortopedia` |
 | `PEDIATRIA`, `PEDIATRA` | `Pediatria` |
 | `REUMATOLOGIA`, `REUMATOLOGISTA` | `Reumatologia` |
-| `ENDOCRINOLOGIA`, `ENDOCRINOLOGISTA` | `Endocrinologista` |
+| `ENDOCRINOLOGIA`, `ENDOCRINOLOGISTA` | `Endocrinologia` |
 | `OTORRINO`, `OTORRINOLARINGOLOGIA` | `Otorrinolaringologia` |
 | `CLINICAMEDICA` | `ClinicaMedica` |
 
