@@ -59,6 +59,7 @@ ALIASES = [
     ("OTORRINOLARINGOLOGIA", "Otorrinolaringologia"),
     ("OTORRINO", "Otorrinolaringologia"),
     ("CLINICA MEDICA", "ClinicaMedica"),
+    ("TOMOGRAFIA", "Tomografia"),
 ]
 
 def normalize_token(s):
@@ -99,7 +100,7 @@ def resolve_specialty(stem, workbook):
                 if match_token(key, token):
                     return canonical
 
-    raise ValueError(f"Não foi possível identificar a especialidade de {stem}")
+    return norm.title()
 
 
 def extract_phones(phone_str):
@@ -133,6 +134,30 @@ def pick_phone(phones):
     chosen = phones[target]
     remaining = ", ".join(p for i, p in enumerate(phones) if i != target)
     return chosen, remaining
+
+
+def split_trailing_phone(nome):
+    """Split a trailing phone off a Nome cell.
+
+    When the Telefone column is empty, the phone may be embedded at the end of
+    the Nome cell (e.g. "Nome Do Paciente (61) 92345-1234"). Returns
+    (name_part, phone_raw) with the trailing phone removed and normalized, or
+    (nome, "") when there is no trailing phone. If stripping leaves no name,
+    the name part is empty.
+    """
+    if not nome:
+        return nome, ""
+    regex = re.compile(r"\(?\d{2}\)?\s?\d{4,5}-?\d{4}")
+    match = None
+    for m in regex.finditer(nome):
+        rest = nome[m.end():]
+        if not rest or not rest.strip() or re.fullmatch(r"[\s\-()]+", rest):
+            match = m
+    if match is None:
+        return nome, ""
+    name_part = nome[:match.start()].strip().rstrip(" -()")
+    phones = extract_phones(match.group(0))
+    return name_part, phones[0] if phones else ""
 
 
 def parse_date(value):
@@ -236,6 +261,8 @@ def build_sheet_rows(ws, cols, sheet_date, canonical):
             skipped_details.append((2 + i, row[cols["data"]]))
             continue
         telefone = str(row[cols["telefone"]]) if row[cols["telefone"]] is not None else ""
+        if not telefone.strip():
+            nome, telefone = split_trailing_phone(nome)
         out = build_row(nome, telefone, canonical, date)
         rows.append((out, 2 + i, date))
     return rows, skipped, skipped_details
@@ -493,6 +520,18 @@ def selftest():
     ])
     assert not missing and not extra
     assert any(f == "Telefone" for _, f, _, _ in diffs)
+    assert split_trailing_phone("Nome Do Paciente (61) 92345-1234") == \
+        ("Nome Do Paciente", "(61) 92345-1234")
+    assert split_trailing_phone("Nome Do Paciente 61 92345-1234") == \
+        ("Nome Do Paciente", "(61) 92345-1234")
+    assert split_trailing_phone("Nome Do Paciente (61) 3345-1234") == \
+        ("Nome Do Paciente", "(61) 3345-1234")
+    assert split_trailing_phone("(61) 92345-1234") == ("", "(61) 92345-1234")
+    assert split_trailing_phone("Nome Do Paciente") == ("Nome Do Paciente", "")
+    assert split_trailing_phone("Maria (61) 92345-1234 Silva") == \
+        ("Maria (61) 92345-1234 Silva", "")
+    assert split_trailing_phone("Nome (61) 92345-1234 (61) 3345-1234") == \
+        ("Nome (61) 92345-1234", "(61) 3345-1234")
     print("selftest ok")
 
 
