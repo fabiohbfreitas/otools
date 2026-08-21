@@ -223,10 +223,66 @@ The date tag is the full ISO date `YYYY-MM-DD`. Resolution order per row:
 | `process --daily <file or folder>` | Also emit combined daily files (`YYYY-MM-DD.csv`). |
 | `process --validate <file or folder>` | Compare generated outputs against inputs; full report. |
 | `process --validate --daily <file or folder>` | Also validate the combined daily files. |
+| `process --duplicates <output folder or CSV>` | Detect patients sharing phone numbers in processed CSVs; write one report per specialty. |
 | `process --selftest` | Run built-in assertions; requires no input file. |
 
 When given a folder, all `.xlsx` files inside it are processed together and output goes
 into that same folder.
+
+`--duplicates` is **standalone**: it must not be combined with `--daily`, `--validate`,
+or `--verbose` (error + exit code 1).
+
+---
+
+## 6.2 Duplicates mode (`--duplicates`)
+
+Detects phone numbers shared by two or more **different** patient names in the
+already-processed CSV outputs.
+
+### Input
+
+- A folder containing day folders (`24-08`, `25-08`, ...): every `<dia>/*.csv` is read
+  and rows are grouped by canonical specialty **across all days**, or
+- a single CSV file path (rows belong to its own specialty).
+
+### Matching rule
+
+1. For every row, collect **all** phones: the `Telefone` column, phones inside
+   `Notas Internas` (`Outros telefones:`), and phones embedded in `Nome`.
+   Phones are normalized to `(DD) XXXXX-XXXX` / `(DD) XXXX-XXXX`; duplicates within a
+   row are removed, first occurrence order preserved.
+2. Occurrences are grouped per phone number.
+3. A phone is flagged when its occurrences contain **2+ distinct patient names**
+   (name identity is case-insensitive and whitespace-collapsed — `ANA SILVA` and
+   `ana  silva` are the same person).
+4. Repeats of the *same* name on the same phone are kept in the listing but do not
+   trigger a flag by themselves.
+
+### Output
+
+- Console: per specialty, `N número(s) duplicado(s), M linha(s) afetada(s)` followed by
+  one line per flagged phone listing occurrence count and distinct patient names;
+  groups sorted by phone.
+- One spreadsheet per specialty that has duplicates:
+
+```
+<output_base>/<CanonicalSpecialty>-duplicados.xlsx
+```
+
+  - Sheet named after the specialty, columns `Nome | Telefones | Especialidade | Data`.
+  - One row per occurrence of each flagged number; phones joined with `;`.
+  - A blank row separates flagged-number groups; header bold; freeze pane at A2.
+  - If the target xlsx is open in Excel (PermissionError), print an error asking to
+    close it and exit 1.
+
+### Exit codes
+
+| Situation | Code |
+|---|---|
+| Success (with or without duplicates) | `0` |
+| Path not found | `1` |
+| Folder contains no `DD-MM` day folders with CSVs | `1` |
+| Output spreadsheet locked / unwritable | `1` |
 
 ---
 
