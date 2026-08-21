@@ -19,3 +19,36 @@ tmp/
 # Python
 __pycache__/
 *.py[cod]
+
+# Rust
+**/sample/
+# Generated build artifacts and dependencies
+/target/
+**/target/
+
+# Cargo package lock for libraries (uncomment if this is a library crate)
+# Cargo.lock
+
+# Cargo local cache / installation artifacts
+**/*.rs.bk
+Cargo.lock.bak
+
+# IDE & Editor specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Temporary files created by Excel / Office
+~$*.xlsx
+~$*.xls
