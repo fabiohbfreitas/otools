@@ -50,6 +50,28 @@ compared in uppercase, and a header is matched if it *contains* the keyword
 If a sheet's header does not contain all four required logical columns, that sheet is
 skipped (it is considered unusable/empty).
 
+### 2.1 Variant: single-sheet per-row exports (`--quant`)
+
+A second input format, selected with the `--quant` flag. The workbook contains one or
+more plain-named spreadsheets (e.g. `Sheet1`) whose header is:
+
+```
+Quant., Nome, Telefone, Data, Hora, Especialidade, Local
+```
+
+- Only `Nome`, `Telefone`, `Data` and `Especialidade` are used; `Quant.` (row counter),
+  `Hora` and `Local` are ignored.
+- Date and specialty are resolved **per row**, not per sheet/file:
+  - The specialty is taken from each row's Especialidade cell, normalized per Section
+    4.1 and matched against the alias table (Section 4.2). Unmatched values fall back
+    to their normalized title-case form.
+- Output folders use the **full ISO date** from the row (`<output_base>/2026-08-26/Ginecologia.csv`)
+  instead of worksheet names.
+- Etiquetas, phone handling, skip rules and CSV format are identical to Sections 5/3.3.
+- Compatible with `--daily` (combined files at `<output_base>/<YYYY-MM-DD>.csv`) and
+  `--verbose`. Not compatible with `--validate`.
+- `--duplicates` accepts day folders named either `DD-MM` or `YYYY-MM-DD`.
+
 ---
 
 ## 3. Output

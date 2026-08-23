@@ -15,6 +15,8 @@ Usage:
   uv run process.py <pasta/>              # process every *.xlsx in the folder
   uv run process.py --daily <pasta/>      # also write combined daily files (2026-08-24.csv)
   uv run process.py --verbose <pasta/>    # extra per-sheet detail (columns, skips)
+  uv run process.py --quant <file.xlsx>   # single-sheet variant: per-row Data+Especialidade,
+                                          # output <YYYY-MM-DD>/<Canonical>.csv
   uv run process.py --validate <pasta/>   # compare outputs against inputs, full report
   uv run process.py --validate --daily <pasta/>  # also validate the combined daily files
   uv run process.py --duplicates <pasta/>     # flag shared phones across day-folder CSVs,
@@ -329,6 +331,74 @@ def write_csv_rows(rows, path):
         writer.writerows(rows)
 
 
+def resolve_row_specialty(raw):
+    """Canonical specialty for one Especialidade cell (quant variant)."""
+    key = normalize_token(str(raw)) if raw is not None else ""
+    if not key:
+        return ""
+    for token, canonical in NORMALIZED_ALIASES:
+        if match_token(key, token):
+            return canonical
+    return key.title()
+
+
+def process_file_quant(file_path, output_base, daily_rows=None, verbose=False):
+    """Process the single-sheet per-row variant (Data + Especialidade on every row).
+
+    Output goes to <output_base>/<YYYY-MM-DD>/<Canonical>.csv. Returns a list of
+    (row_count, output_path, skipped_without_date).
+    """
+    workbook = openpyxl.load_workbook(file_path, data_only=True)
+    created = []
+    for sheet in workbook.sheetnames:
+        ws = workbook[sheet]
+        header = [c.value for c in ws[1]] if ws.max_row >= 1 else []
+        if not header or header[0] is None:
+            if verbose:
+                print(f"  {sheet}: planilha vazia, ignorada")
+            continue
+        try:
+            cols = resolve_columns(header)
+        except ValueError:
+            if verbose:
+                print(f"  {sheet}: cabeçalho não resolvido, ignorada")
+            continue
+
+        groups = {}
+        skipped = 0
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            nome = row[cols["nome"]]
+            if nome is None or not str(nome).strip():
+                continue
+            nome = str(nome).strip()
+            date = parse_date(row[cols["data"]])
+            if not date:
+                skipped += 1
+                continue
+            telefone = str(row[cols["telefone"]]) if row[cols["telefone"]] is not None else ""
+            if not telefone.strip():
+                nome, telefone = split_trailing_phone(nome)
+            canonical = resolve_row_specialty(row[cols["especialidade"]])
+            out = build_row(nome, telefone, canonical, date)
+            groups.setdefault((date, canonical), []).append(out)
+            if daily_rows is not None:
+                daily_rows.setdefault(date, []).append(out)
+
+        if not groups and skipped == 0:
+            continue
+        for (date, canonical), rows in sorted(groups.items()):
+            folder = output_base / date
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / f"{canonical}.csv"
+            if path.exists():
+                path.unlink()
+            write_csv_rows(rows, path)
+            created.append((len(rows), path, skipped))
+            if verbose:
+                print(f"  {sheet}/{date}/{canonical}: {len(rows)} linhas | {skipped} sem data")
+    return created
+
+
 FIELDS = ["Nome", "Telefone", "Etiquetas", "Notas Internas"]
 
 
@@ -421,7 +491,7 @@ def collect_groups(path):
         return {canonical_from_stem(path.stem): read_csv_rows(path)}, path.parent
     day_dirs = [
         d for d in sorted(path.iterdir())
-        if d.is_dir() and re.match(r"^\d{1,2}-\d{1,2}$", d.name)
+        if d.is_dir() and (re.match(r"^\d{1,2}-\d{1,2}$", d.name) or re.match(r"^\d{4}-\d{2}-\d{2}$", d.name))
     ]
     if not day_dirs:
         return {}, None
@@ -698,6 +768,36 @@ def selftest():
     g1 = dict(flagged)["(61) 99999-0002"]
     assert len(g1) == 2 and g1[0][0] == "BRUNO COSTA" and g1[1][0] == "CARLOS DIAS"
     assert g1[0][2] == "2026-08-24" and g1[1][2] == "2026-08-25"
+
+    assert resolve_row_specialty("GINECOLOGISTA") == "Ginecologia"
+    assert resolve_row_specialty("Cardiologia") == "Cardiologia"
+    assert resolve_row_specialty("Exames laboratoriais") == "ExameLaboratorial"
+    assert resolve_row_specialty("Fono") == "Fono"
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["QUANT.", "Nome", "Telefone", "Data", "Hora", "Especialidade", "Local"])
+        ws.append([1, " MARIA APARECIDA", "(61) 98194-5975",
+                   datetime(2026, 8, 26), datetime(2026, 8, 26, 7, 0),
+                   "GINECOLOGISTA", "sáude da gente - marajo "])
+        ws.append([2, "SEM DATA", "(61) 98194-5975", "", "", "GINECOLOGISTA", "x"])
+        sample = Path(td) / "26.08 GINECOLOGISTA.xlsx"
+        wb.save(sample)
+        quant_daily = {}
+        created = process_file_quant(sample, Path(td), quant_daily)
+        assert len(created) == 1
+        count, out_path, skipped = created[0]
+        assert count == 1 and skipped == 1
+        assert out_path == Path(td) / "2026-08-26" / "Ginecologia.csv"
+        rows = read_csv_rows(out_path)
+        assert len(rows) == 1
+        row = rows[0][0]
+        assert row["Nome"] == "MARIA APARECIDA"
+        assert row["Telefone"] == "(61) 98194-5975"
+        assert row["Etiquetas"] == "2026-08-26, Automação, Ginecologia, SaudeDaGente, Marajo"
+        assert list(quant_daily) == ["2026-08-26"]
     print("selftest ok")
 
 
@@ -708,21 +808,25 @@ def main():
 
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     daily = "--daily" in sys.argv
+    quant = "--quant" in sys.argv
     if len(args) < 1:
         print("Uso: uv run process.py [--validate] [--daily] [--verbose] "
-              "[--duplicates] <arquivo|pasta>")
+              "[--duplicates] [--quant] <arquivo|pasta>")
         sys.exit(1)
 
     path = Path(args[0])
     verbose = "--verbose" in sys.argv
     if "--duplicates" in sys.argv:
-        for flag in ("--daily", "--validate", "--verbose"):
+        for flag in ("--daily", "--validate", "--verbose", "--quant"):
             if flag in sys.argv:
                 print(f"Erro: --duplicates não pode ser combinado com {flag}.")
                 sys.exit(1)
         sys.exit(run_duplicates(path))
 
     if "--validate" in sys.argv:
+        if quant:
+            print("Erro: --quant não pode ser combinado com --validate.")
+            sys.exit(1)
         sys.exit(validate(path, daily))
 
     if path.is_dir():
@@ -738,20 +842,36 @@ def main():
 
     daily_rows = {} if daily else None
 
-    grand_total = 0
-    grand_skipped = 0
-    for f in files:
-        canonical, created = process_file(f, output_base, daily_rows, verbose)
-        total = sum(n for n, _, _ in created)
-        skipped = sum(s for _, _, s in created)
-        print(f"{total:5d}  {f.name}  ->  {canonical}")
-        for count, path, skip in created:
-            line = f"      {count:5d}  {path}"
-            if skip:
-                line += f"  ({skip} sem data)"
-            print(line)
-        grand_total += total
-        grand_skipped += skipped
+    if quant:
+        grand_total = 0
+        grand_skipped = 0
+        for f in files:
+            created = process_file_quant(f, output_base, daily_rows, verbose)
+            total = sum(n for n, _, _ in created)
+            skipped = sum(s for _, _, s in created)
+            print(f"{total:5d}  {f.name}")
+            for count, p, skip in created:
+                line = f"      {count:5d}  {p}"
+                if skip:
+                    line += f"  ({skip} sem data)"
+                print(line)
+            grand_total += total
+            grand_skipped += skipped
+    else:
+        grand_total = 0
+        grand_skipped = 0
+        for f in files:
+            canonical, created = process_file(f, output_base, daily_rows, verbose)
+            total = sum(n for n, _, _ in created)
+            skipped = sum(s for _, _, s in created)
+            print(f"{total:5d}  {f.name}  ->  {canonical}")
+            for count, path, skip in created:
+                line = f"      {count:5d}  {path}"
+                if skip:
+                    line += f"  ({skip} sem data)"
+                print(line)
+            grand_total += total
+            grand_skipped += skipped
     print(f"Total: {grand_total} linhas")
     if grand_skipped:
         print(f"Aviso: {grand_skipped} linha(s) ignorada(s) por não terem data.")
