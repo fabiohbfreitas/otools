@@ -163,7 +163,7 @@ input *contains* the token OR the token *contains* the normalized input.
 | `LABORATOR` | `ExameLaboratorial` |
 | `CARDIOLOGIA`, `CARDIOLOGISTA` | `Cardiologia` |
 | `DERMATOLOGIA`, `DERMATOLOGISTA` | `Dermatologia` |
-| `ECOGRAFIA`, `US DE ABDOMEN TOTAL`, `US DE TIREOIDE`, `US MAMARIA` | `Ecografia` |
+| `ECOGRAFIA`, `US DE ABDOMEN TOTAL`, `US DE TIREOIDE`, `US MAMARIA`, `US DE PROSTATA`, `US PROSTATA` | `Ecografia` |
 | `GINECOLOGIA`, `GINECOLOGISTA` | `Ginecologia` |
 | `MAMOGRAFIA` | `Mamografia` |
 | `ORTOPEDIA`, `ORTOPEDISTA` | `Ortopedia` |

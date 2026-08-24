@@ -52,6 +52,8 @@ ALIASES = [
     ("US DE ABDOMEN TOTAL", "Ecografia"),
     ("US DE TIREOIDE", "Ecografia"),
     ("US MAMARIA", "Ecografia"),
+    ("US DE PROSTATA", "Ecografia"),
+    ("US PROSTATA", "Ecografia"),
     ("ECOGRAFIA", "Ecografia"),
     ("GINECOLOGISTA", "Ginecologia"),
     ("GINECOLOGIA", "Ginecologia"),
@@ -834,6 +836,11 @@ def selftest():
     assert resolve_row_specialty("Cardiologia") == "Cardiologia"
     assert resolve_row_specialty("Exames laboratoriais") == "ExameLaboratorial"
     assert resolve_row_specialty("Fono") == "Fono"
+    assert resolve_row_specialty("US DE PROSTATA") == "Ecografia"
+    assert resolve_row_specialty("US PROSTATA") == "Ecografia"
+    assert resolve_row_specialty("us de  próstata") == "Ecografia"
+    assert canonical_from_stem("Usdeprostata") == "Ecografia"
+    assert canonical_from_stem("Usprostata") == "Ecografia"
 
     import tempfile
     with tempfile.TemporaryDirectory() as td:
