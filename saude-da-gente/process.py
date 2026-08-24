@@ -17,12 +17,14 @@ Usage:
   uv run process.py --verbose <pasta/>    # extra per-sheet detail (columns, skips)
   uv run process.py --quant <file.xlsx>   # single-sheet variant: per-row Data+Especialidade,
                                           # output <YYYY-MM-DD>/<Canonical>.csv
-  uv run process.py --validate <pasta/>   # compare outputs against inputs, full report
-  uv run process.py --validate --daily <pasta/>  # also validate the combined daily files
   uv run process.py --duplicates <pasta/>     # flag shared phones across day-folder CSVs,
-                                              # one <Especialidade>-duplicados.xlsx per specialty
+                                              # one duplicados.xlsx report
   uv run process.py --duplicates <arquivo.csv>  # single CSV
   uv run process.py --selftest
+
+Every processing run ends with an independent verification pass: the workbooks are
+reloaded and re-derived from scratch and compared against the generated CSVs
+(exit 1 on any difference).
 """
 import csv
 import re
@@ -364,6 +366,35 @@ def resolve_row_specialty(raw):
     return key.title()
 
 
+def build_quant_groups(ws, cols):
+    """Derive expected quant rows from one worksheet.
+
+    Returns (ordered, groups, skipped): ordered is the source-order list of
+    (output_dict, date); groups maps (date, canonical) to a list of
+    (output_dict, spreadsheet_row_number); skipped counts rows without a date.
+    """
+    ordered = []
+    groups = {}
+    skipped = 0
+    for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
+        nome = row[cols["nome"]]
+        if nome is None or not str(nome).strip():
+            continue
+        nome = str(nome).strip()
+        date = parse_date(row[cols["data"]])
+        if not date:
+            skipped += 1
+            continue
+        telefone = str(row[cols["telefone"]]) if row[cols["telefone"]] is not None else ""
+        if not telefone.strip():
+            nome, telefone = split_trailing_phone(nome)
+        canonical = resolve_row_specialty(row[cols["especialidade"]])
+        out = build_row(nome, telefone, canonical, date)
+        ordered.append((out, date))
+        groups.setdefault((date, canonical), []).append((out, 2 + i))
+    return ordered, groups, skipped
+
+
 def process_file_quant(file_path, output_base, daily_rows=None, verbose=False):
     """Process the single-sheet per-row variant (Data + Especialidade on every row).
 
@@ -386,29 +417,16 @@ def process_file_quant(file_path, output_base, daily_rows=None, verbose=False):
                 print(f"  {sheet}: cabeçalho não resolvido, ignorada")
             continue
 
-        groups = {}
-        skipped = 0
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            nome = row[cols["nome"]]
-            if nome is None or not str(nome).strip():
-                continue
-            nome = str(nome).strip()
-            date = parse_date(row[cols["data"]])
-            if not date:
-                skipped += 1
-                continue
-            telefone = str(row[cols["telefone"]]) if row[cols["telefone"]] is not None else ""
-            if not telefone.strip():
-                nome, telefone = split_trailing_phone(nome)
-            canonical = resolve_row_specialty(row[cols["especialidade"]])
-            out = build_row(nome, telefone, canonical, date)
-            groups.setdefault((date, canonical), []).append(out)
-            if daily_rows is not None:
+        ordered, groups, skipped = build_quant_groups(ws, cols)
+
+        if daily_rows is not None:
+            for out, date in ordered:
                 daily_rows.setdefault(date, []).append(out)
 
         if not groups and skipped == 0:
             continue
-        for (date, canonical), rows in sorted(groups.items()):
+        for (date, canonical), entries in sorted(groups.items()):
+            rows = [out for out, _ in entries]
             folder = output_base / date
             folder.mkdir(parents=True, exist_ok=True)
             path = folder / f"{canonical}.csv"
@@ -637,47 +655,67 @@ def _report_sheet(lines, totals, sheet_label, expected, csv_path):
         )
 
 
-def validate(path, daily):
-    if path.is_dir():
-        files = sorted(path.glob("*.xlsx"))
-        output_base = path
-    else:
-        files = [path]
-        output_base = path.parent
-    if not files:
-        print("Nenhum arquivo xlsx encontrado.")
-        return 1
+def verify_run(files, output_base, daily, quant=False):
+    """Independent post-run check: reload every processed workbook, re-derive the
+    expected outputs from scratch and compare them against the CSVs on disk.
 
+    Prints a console report and returns exit code 1 on any difference, else 0.
+    """
     lines = []
     totals = {"ok": 0, "diff": 0, "missing": 0, "extra": 0, "skipped": 0, "no_file": 0}
     daily_expected = {}
 
     for f in files:
         workbook = openpyxl.load_workbook(f, data_only=True)
-        canonical = resolve_specialty(f.stem, workbook)
-        lines.append(f"{f.name}  ->  {canonical}")
-        for sheet in workbook.sheetnames:
-            ws = workbook[sheet]
-            header = [c.value for c in ws[1]] if ws.max_row >= 1 else []
-            if not header or header[0] is None:
-                continue
-            try:
-                cols = resolve_columns(header)
-            except ValueError:
-                continue
-            sheet_date = parse_sheet_date(sheet)
-            sheet_rows, skipped, _ = build_sheet_rows(ws, cols, sheet_date, canonical)
-            if not sheet_rows and skipped == 0:
-                continue
-            totals["skipped"] += skipped
-            if daily:
-                for out, row_num, date in sheet_rows:
-                    daily_expected.setdefault(date, []).append((out, row_num, date))
-            _report_sheet(
-                lines, totals, sheet,
-                sheet_rows,
-                output_base / sanitize_folder(sheet) / f"{canonical}.csv",
-            )
+        if not quant:
+            canonical = resolve_specialty(f.stem, workbook)
+            lines.append(f"{f.name}  ->  {canonical}")
+            for sheet in workbook.sheetnames:
+                ws = workbook[sheet]
+                header = [c.value for c in ws[1]] if ws.max_row >= 1 else []
+                if not header or header[0] is None:
+                    continue
+                try:
+                    cols = resolve_columns(header)
+                except ValueError:
+                    continue
+                sheet_date = parse_sheet_date(sheet)
+                sheet_rows, skipped, _ = build_sheet_rows(ws, cols, sheet_date, canonical)
+                if not sheet_rows and skipped == 0:
+                    continue
+                totals["skipped"] += skipped
+                if daily:
+                    for out, row_num, date in sheet_rows:
+                        daily_expected.setdefault(date, []).append((out, row_num, date))
+                _report_sheet(
+                    lines, totals, sheet,
+                    sheet_rows,
+                    output_base / sanitize_folder(sheet) / f"{canonical}.csv",
+                )
+        else:
+            lines.append(str(f.name))
+            for sheet in workbook.sheetnames:
+                ws = workbook[sheet]
+                header = [c.value for c in ws[1]] if ws.max_row >= 1 else []
+                if not header or header[0] is None:
+                    continue
+                try:
+                    cols = resolve_columns(header)
+                except ValueError:
+                    continue
+                _, groups, skipped = build_quant_groups(ws, cols)
+                if not groups and skipped == 0:
+                    continue
+                totals["skipped"] += skipped
+                for (date, canonical), entries in sorted(groups.items()):
+                    expected = [(out, row_num, date) for out, row_num in entries]
+                    if daily:
+                        daily_expected.setdefault(date, []).extend(expected)
+                    _report_sheet(
+                        lines, totals, f"{date}",
+                        expected,
+                        output_base / date / f"{canonical}.csv",
+                    )
 
     if daily:
         lines.append("Diário:")
@@ -689,20 +727,14 @@ def validate(path, daily):
             )
 
     lines.append(
-        f"\nTotal: OK {totals['ok']} | DIFERENTE {totals['diff']} | "
+        f"\nVerificação: OK {totals['ok']} | DIFERENTE {totals['diff']} | "
         f"FALTANDO {totals['missing']} | EXTRA {totals['extra']} | "
-        f"SEM DATA {totals.get('skipped', 0)}"
+        f"SEM DATA {totals['skipped']}"
     )
     if totals["no_file"]:
         lines.append(f"Aviso: {totals['no_file']} arquivo(s) de saída não encontrado(s).")
 
-    report_path = output_base / "validation-report.md"
-    with open(report_path, "w", encoding="utf-8") as fp:
-        fp.write("# Relatório de validação\n\n")
-        fp.write("\n".join(lines))
-        fp.write("\n")
     print("\n".join(lines))
-    print(f"\nRelatório salvo em: {report_path}")
     return 1 if (totals["diff"] or totals["missing"] or totals["extra"]) else 0
 
 
@@ -830,6 +862,32 @@ def selftest():
         again = process_file_quant(sample, Path(td))
         assert again[0][0] == 1 and again[0][3] is True
 
+        # embedded verification: clean output passes, tampered output fails
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            assert verify_run([sample], Path(td), False, quant=True) == 0
+        rows = read_csv_rows(out_path)
+        allrows = [r for r, _ in rows]
+        allrows[0]["Telefone"] = "(61) 90000-0000"
+        write_csv_rows(allrows, out_path)
+        with redirect_stdout(buf):
+            assert verify_run([sample], Path(td), False, quant=True) == 1
+
+    wbq = openpyxl.Workbook()
+    wsq = wbq.active
+    wsq.append(["QUANT.", "Nome", "Telefone", "Data", "Hora", "Especialidade", "Local"])
+    wsq.append([1, "A", "(61) 99999-0001", datetime(2026, 8, 26), "", "GINECOLOGISTA", "x"])
+    wsq.append([2, "B", "(61) 99999-0002", datetime(2026, 8, 26), "", "GINECOLOGISTA", "x"])
+    wsq.append([3, "C", "(61) 99999-0003", "", "", "GINECOLOGISTA", "x"])
+    colsq = resolve_columns(["QUANT.", "Nome", "Telefone", "Data", "Hora", "Especialidade", "Local"])
+    ordered, qgroups, qskipped = build_quant_groups(wsq, colsq)
+    assert len(ordered) == 2 and qskipped == 1
+    assert set(qgroups) == {("2026-08-26", "Ginecologia")}
+    assert [rn for _, rn in qgroups[("2026-08-26", "Ginecologia")]] == [2, 3]
+    assert ordered[0][1] == "2026-08-26"
+
     assert parse_confirm("") is True
     assert parse_confirm(" y ") is True
     assert parse_confirm("S") is True
@@ -869,24 +927,18 @@ def main():
     daily = "--daily" in sys.argv
     quant = "--quant" in sys.argv
     if len(args) < 1:
-        print("Uso: uv run process.py [--validate] [--daily] [--verbose] "
+        print("Uso: uv run process.py [--daily] [--verbose] "
               "[--duplicates] [--quant] <arquivo|pasta>")
         sys.exit(1)
 
     path = Path(args[0])
     verbose = "--verbose" in sys.argv
     if "--duplicates" in sys.argv:
-        for flag in ("--daily", "--validate", "--verbose", "--quant"):
+        for flag in ("--daily", "--verbose", "--quant"):
             if flag in sys.argv:
                 print(f"Erro: --duplicates não pode ser combinado com {flag}.")
                 sys.exit(1)
         sys.exit(run_duplicates(path))
-
-    if "--validate" in sys.argv:
-        if quant:
-            print("Erro: --quant não pode ser combinado com --validate.")
-            sys.exit(1)
-        sys.exit(validate(path, daily))
 
     if path.is_dir():
         files = sorted(path.glob("*.xlsx"))
@@ -962,6 +1014,8 @@ def main():
         print("\nIgnorados pelo usuário:")
         for f in declined:
             print(f"  {f.name}")
+
+    sys.exit(verify_run(files, output_base, daily, quant))
 
 
 if __name__ == "__main__":
