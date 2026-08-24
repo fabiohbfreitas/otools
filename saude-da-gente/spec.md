@@ -243,6 +243,8 @@ The date tag is the full ISO date `YYYY-MM-DD`. Resolution order per row:
 | `process <file.xlsx>` | Process a single file. |
 | `process <folder/>` | Process every `.xlsx` in the folder. |
 | `process --daily <file or folder>` | Also emit combined daily files (`YYYY-MM-DD.csv`). |
+| `process --confirm <folder/>` | Prompt `y/n` per discovered `.xlsx` **before** processing (folders only; Enter = yes; EOF = no). Declined files are listed at the end under `Ignorados pelo usuário:`. |
+| `process --verbose <file or folder>` | Extra per-sheet detail (columns, skips). |
 | `process --validate <file or folder>` | Compare generated outputs against inputs; full report. |
 | `process --validate --daily <file or folder>` | Also validate the combined daily files. |
 | `process --duplicates <output folder or CSV>` | Detect patients sharing phone numbers in processed CSVs; write one report per specialty. |
@@ -251,8 +253,12 @@ The date tag is the full ISO date `YYYY-MM-DD`. Resolution order per row:
 When given a folder, all `.xlsx` files inside it are processed together and output goes
 into that same folder.
 
+Every generated CSV line in the console output is annotated `[novo]` (file created) or
+`[sobrescrito]` (an existing file was replaced), including the combined daily files.
+
 `--duplicates` is **standalone**: it must not be combined with `--daily`, `--validate`,
-or `--verbose` (error + exit code 1).
+`--verbose`, `--quant`, or `--confirm` (error + exit code 1). `--validate` also rejects
+`--quant` and `--confirm`.
 
 ---
 

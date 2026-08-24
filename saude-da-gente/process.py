@@ -14,6 +14,7 @@ Usage:
   uv run process.py <arquivo.xlsx>        # single file
   uv run process.py <pasta/>              # process every *.xlsx in the folder
   uv run process.py --daily <pasta/>      # also write combined daily files (2026-08-24.csv)
+  uv run process.py --confirm <pasta/>    # ask y/n for each found xlsx before processing
   uv run process.py --verbose <pasta/>    # extra per-sheet detail (columns, skips)
   uv run process.py --quant <file.xlsx>   # single-sheet variant: per-row Data+Especialidade,
                                           # output <YYYY-MM-DD>/<Canonical>.csv
@@ -204,6 +205,27 @@ def sanitize_folder(name):
     return re.sub(r'[<>:"/\\|?*]', "_", name).strip()
 
 
+def parse_confirm(raw):
+    """y/yes/s/sim/empty -> True; n/no/nao -> False; anything else -> None (re-ask)."""
+    s = (raw or "").strip().lower()
+    if s in ("", "y", "yes", "s", "sim"):
+        return True
+    if s in ("n", "no", "nao", "não"):
+        return False
+    return None
+
+
+def confirm_file(name):
+    while True:
+        try:
+            raw = input(f"Processar '{name}'? [Y/n] ")
+        except EOFError:
+            return False
+        answer = parse_confirm(raw)
+        if answer is not None:
+            return answer
+
+
 REQUIRED_COLUMNS = ["nome", "telefone", "data", "especialidade"]
 
 
@@ -303,10 +325,11 @@ def process_file(file_path, output_base, daily_rows=None, verbose=False):
         folder = output_base / sanitize_folder(sheet)
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{canonical}.csv"
-        if path.exists():
+        existed = path.exists()
+        if existed:
             path.unlink()
         write_csv_rows([out for out, _, _ in sheet_rows], path)
-        created.append((len(sheet_rows), path, skipped))
+        created.append((len(sheet_rows), path, skipped, existed))
         if verbose:
             cols_str = ", ".join(f"{k}={v}" for k, v in sorted(cols.items()))
             print(f"  {sheet}: colunas {cols_str} | {len(sheet_rows)} linhas | {skipped} sem data")
@@ -346,7 +369,7 @@ def process_file_quant(file_path, output_base, daily_rows=None, verbose=False):
     """Process the single-sheet per-row variant (Data + Especialidade on every row).
 
     Output goes to <output_base>/<YYYY-MM-DD>/<Canonical>.csv. Returns a list of
-    (row_count, output_path, skipped_without_date).
+    (row_count, output_path, skipped_without_date, existed_before).
     """
     workbook = openpyxl.load_workbook(file_path, data_only=True)
     created = []
@@ -390,10 +413,11 @@ def process_file_quant(file_path, output_base, daily_rows=None, verbose=False):
             folder = output_base / date
             folder.mkdir(parents=True, exist_ok=True)
             path = folder / f"{canonical}.csv"
-            if path.exists():
+            existed = path.exists()
+            if existed:
                 path.unlink()
             write_csv_rows(rows, path)
-            created.append((len(rows), path, skipped))
+            created.append((len(rows), path, skipped, existed))
             if verbose:
                 print(f"  {sheet}/{date}/{canonical}: {len(rows)} linhas | {skipped} sem data")
     return created
@@ -788,8 +812,8 @@ def selftest():
         quant_daily = {}
         created = process_file_quant(sample, Path(td), quant_daily)
         assert len(created) == 1
-        count, out_path, skipped = created[0]
-        assert count == 1 and skipped == 1
+        count, out_path, skipped, existed = created[0]
+        assert count == 1 and skipped == 1 and existed is False
         assert out_path == Path(td) / "2026-08-26" / "Ginecologia.csv"
         rows = read_csv_rows(out_path)
         assert len(rows) == 1
@@ -798,6 +822,16 @@ def selftest():
         assert row["Telefone"] == "(61) 98194-5975"
         assert row["Etiquetas"] == "2026-08-26, Automação, Ginecologia, SaudeDaGente, Marajo"
         assert list(quant_daily) == ["2026-08-26"]
+        again = process_file_quant(sample, Path(td))
+        assert again[0][0] == 1 and again[0][3] is True
+
+    assert parse_confirm("") is True
+    assert parse_confirm(" y ") is True
+    assert parse_confirm("S") is True
+    assert parse_confirm("sim") is True
+    assert parse_confirm("n") is False
+    assert parse_confirm("NÃO") is False
+    assert parse_confirm("x") is None
     print("selftest ok")
 
 
@@ -809,15 +843,16 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     daily = "--daily" in sys.argv
     quant = "--quant" in sys.argv
+    confirm = "--confirm" in sys.argv
     if len(args) < 1:
         print("Uso: uv run process.py [--validate] [--daily] [--verbose] "
-              "[--duplicates] [--quant] <arquivo|pasta>")
+              "[--duplicates] [--quant] [--confirm] <arquivo|pasta>")
         sys.exit(1)
 
     path = Path(args[0])
     verbose = "--verbose" in sys.argv
     if "--duplicates" in sys.argv:
-        for flag in ("--daily", "--validate", "--verbose", "--quant"):
+        for flag in ("--daily", "--validate", "--verbose", "--quant", "--confirm"):
             if flag in sys.argv:
                 print(f"Erro: --duplicates não pode ser combinado com {flag}.")
                 sys.exit(1)
@@ -826,6 +861,9 @@ def main():
     if "--validate" in sys.argv:
         if quant:
             print("Erro: --quant não pode ser combinado com --validate.")
+            sys.exit(1)
+        if confirm:
+            print("Erro: --confirm não pode ser combinado com --validate.")
             sys.exit(1)
         sys.exit(validate(path, daily))
 
@@ -836,7 +874,20 @@ def main():
         files = [path]
         output_base = path.parent
 
+    declined = []
+    if confirm and path.is_dir():
+        confirmed = []
+        for f in files:
+            if confirm_file(f.name):
+                confirmed.append(f)
+            else:
+                declined.append(f)
+        files = confirmed
+
     if not files:
+        if declined:
+            print("Nenhum arquivo selecionado.")
+            sys.exit(0)
         print("Nenhum arquivo xlsx encontrado.")
         sys.exit(1)
 
@@ -847,13 +898,14 @@ def main():
         grand_skipped = 0
         for f in files:
             created = process_file_quant(f, output_base, daily_rows, verbose)
-            total = sum(n for n, _, _ in created)
-            skipped = sum(s for _, _, s in created)
+            total = sum(n for n, _, _, _ in created)
+            skipped = sum(s for _, _, s, _ in created)
             print(f"{total:5d}  {f.name}")
-            for count, p, skip in created:
+            for count, p, skip, existed in created:
                 line = f"      {count:5d}  {p}"
                 if skip:
                     line += f"  ({skip} sem data)"
+                line += "  [sobrescrito]" if existed else "  [novo]"
                 print(line)
             grand_total += total
             grand_skipped += skipped
@@ -862,13 +914,14 @@ def main():
         grand_skipped = 0
         for f in files:
             canonical, created = process_file(f, output_base, daily_rows, verbose)
-            total = sum(n for n, _, _ in created)
-            skipped = sum(s for _, _, s in created)
+            total = sum(n for n, _, _, _ in created)
+            skipped = sum(s for _, _, s, _ in created)
             print(f"{total:5d}  {f.name}  ->  {canonical}")
-            for count, path, skip in created:
-                line = f"      {count:5d}  {path}"
+            for count, p, skip, existed in created:
+                line = f"      {count:5d}  {p}"
                 if skip:
                     line += f"  ({skip} sem data)"
+                line += "  [sobrescrito]" if existed else "  [novo]"
                 print(line)
             grand_total += total
             grand_skipped += skipped
@@ -879,8 +932,15 @@ def main():
     if daily:
         for date, rows in sorted(daily_rows.items()):
             path = output_base / f"{date}.csv"
+            existed = path.exists()
             write_csv_rows(rows, path)
-            print(f"Diário: {len(rows):5d}  {path}")
+            mark = "[sobrescrito]" if existed else "[novo]"
+            print(f"Diário: {len(rows):5d}  {path}  {mark}")
+
+    if declined:
+        print("\nIgnorados pelo usuário:")
+        for f in declined:
+            print(f"  {f.name}")
 
 
 if __name__ == "__main__":
