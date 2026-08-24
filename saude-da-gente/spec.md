@@ -289,13 +289,14 @@ already-processed CSV outputs.
 - Console: per specialty, `N número(s) duplicado(s), M linha(s) afetada(s)` followed by
   one line per flagged phone listing occurrence count and distinct patient names;
   groups sorted by phone.
-- One spreadsheet per specialty that has duplicates:
+- One single spreadsheet for all specialties with duplicates:
 
 ```
-<output_base>/<CanonicalSpecialty>-duplicados.xlsx
+<output_base>/duplicados.xlsx
 ```
 
-  - Sheet named after the specialty, columns `Nome | Telefones | Especialidade | Data`.
+  - Single sheet (`Duplicados`), columns `Nome | Telefones | Especialidade | Data`.
+  - All specialties on the same sheet; the Especialidade column identifies each row.
   - One row per occurrence of each flagged number; phones joined with `;`.
   - A blank row separates flagged-number groups; header bold; freeze pane at A2.
   - If the target xlsx is open in Excel (PermissionError), print an error asking to

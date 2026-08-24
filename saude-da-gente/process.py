@@ -479,20 +479,25 @@ def find_duplicates(rows):
     return flagged
 
 
-def write_spreadsheet(flagged, sheet_name, out_path):
+def write_spreadsheet(specialty_groups, out_path):
+    """Write one workbook with all specialties' flagged groups on a single sheet.
+
+    specialty_groups: list of (canonical, flagged) where flagged is [(phone, occs)].
+    """
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = sheet_name[:31]
+    ws.title = "Duplicados"
     ws.append(["Nome", "Telefones", "Especialidade", "Data"])
     for cell in ws[1]:
         cell.font = Font(bold=True)
     first = True
-    for _, occs in flagged:
-        if not first:
-            ws.append(["", "", "", ""])
-        first = False
-        for nome, phones, date in occs:
-            ws.append([nome, ";".join(phones), sheet_name, date])
+    for canonical, flagged in specialty_groups:
+        for _, occs in flagged:
+            if not first:
+                ws.append(["", "", "", ""])
+            first = False
+            for nome, phones, date in occs:
+                ws.append([nome, ";".join(phones), canonical, date])
     ws.column_dimensions["A"].width = 45
     ws.column_dimensions["B"].width = 40
     ws.column_dimensions["C"].width = 20
@@ -505,7 +510,7 @@ def write_spreadsheet(flagged, sheet_name, out_path):
         sys.exit(1)
 
 
-DUPLICADOS_SUFFIX = "-duplicados.xlsx"
+DUPLICADOS_FILENAME = "duplicados.xlsx"
 
 
 def collect_groups(path):
@@ -529,9 +534,9 @@ def collect_groups(path):
 def run_duplicates(path):
     """Detect patients sharing phone numbers in processed CSV outputs.
 
-    path points at the output base containing DD-MM day folders (or a single
-    CSV). Writes <Canonical>-duplicados.xlsx per specialty next to the day
-    folders. Returns exit code 0 on success, 1 on error.
+    path points at the output base containing day folders (or a single CSV).
+    Writes a single duplicados.xlsx (all specialties on one sheet) next to the
+    day folders. Returns exit code 0 on success, 1 on error.
     """
     if not path.exists():
         print(f"Caminho não encontrado: {path}")
@@ -542,7 +547,7 @@ def run_duplicates(path):
         print(f"Nenhuma pasta de dia (DD-MM) com CSVs encontrada em {path}")
         return 1
 
-    wrote = 0
+    flagged_any = []
     for canonical in sorted(groups):
         rows = groups[canonical]
         flagged = find_duplicates(rows)
@@ -555,13 +560,14 @@ def run_duplicates(path):
         for phone, occs in flagged:
             names = sorted({n for n, _, _ in occs})
             print(f"  {phone}: {len(occs)} linha(s), {len(names)} paciente(s): {', '.join(names)}")
-        out_path = out_base / f"{canonical}{DUPLICADOS_SUFFIX}"
-        write_spreadsheet(flagged, canonical, out_path)
-        print(f"Planilha salva em: {out_path}")
-        wrote += 1
+        flagged_any.append((canonical, flagged))
 
-    if wrote == 0:
+    if not flagged_any:
         print("Nenhuma planilha gerada.")
+        return 0
+    out_path = out_base / DUPLICADOS_FILENAME
+    write_spreadsheet(flagged_any, out_path)
+    print(f"Planilha salva em: {out_path}")
     return 0
 
 
@@ -831,6 +837,26 @@ def selftest():
     assert parse_confirm("n") is False
     assert parse_confirm("NÃO") is False
     assert parse_confirm("x") is None
+
+    with tempfile.TemporaryDirectory() as td:
+        dup_path = Path(td) / DUPLICADOS_FILENAME
+        write_spreadsheet([
+            ("Cardiologia", [("(61) 99999-0002", [
+                ("BRUNO COSTA", ["(61) 99999-0002"], "2026-08-24"),
+                ("CARLOS DIAS", ["(61) 99999-0002"], "2026-08-25"),
+            ])]),
+            ("Pediatria", [("(61) 99999-0009", [
+                ("DUDA SOUZA", ["(61) 99999-0009"], "2026-08-26"),
+            ])]),
+        ], dup_path)
+        wb = openpyxl.load_workbook(dup_path)
+        ws = wb.active
+        assert ws.title == "Duplicados" and len(wb.sheetnames) == 1
+        assert [c.value for c in ws[1]] == ["Nome", "Telefones", "Especialidade", "Data"]
+        assert ws["A2"].value == "BRUNO COSTA" and ws["B2"].value == "(61) 99999-0002"
+        assert ws["C2"].value == "Cardiologia" and ws["D3"].value == "2026-08-25"
+        assert ws["A4"].value is None  # blank separator between groups
+        assert ws["A5"].value == "DUDA SOUZA" and ws["C5"].value == "Pediatria"
     print("selftest ok")
 
 
