@@ -12,9 +12,8 @@ Nome, Telefone, Etiquetas, Notas Internas.
 
 Usage:
   uv run process.py <arquivo.xlsx>        # single file
-  uv run process.py <pasta/>              # process every *.xlsx in the folder
+  uv run process.py <pasta/>              # process *.xlsx in the folder (asks y/n per file)
   uv run process.py --daily <pasta/>      # also write combined daily files (2026-08-24.csv)
-  uv run process.py --confirm <pasta/>    # ask y/n for each found xlsx before processing
   uv run process.py --verbose <pasta/>    # extra per-sheet detail (columns, skips)
   uv run process.py --quant <file.xlsx>   # single-sheet variant: per-row Data+Especialidade,
                                           # output <YYYY-MM-DD>/<Canonical>.csv
@@ -843,16 +842,15 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     daily = "--daily" in sys.argv
     quant = "--quant" in sys.argv
-    confirm = "--confirm" in sys.argv
     if len(args) < 1:
         print("Uso: uv run process.py [--validate] [--daily] [--verbose] "
-              "[--duplicates] [--quant] [--confirm] <arquivo|pasta>")
+              "[--duplicates] [--quant] <arquivo|pasta>")
         sys.exit(1)
 
     path = Path(args[0])
     verbose = "--verbose" in sys.argv
     if "--duplicates" in sys.argv:
-        for flag in ("--daily", "--validate", "--verbose", "--quant", "--confirm"):
+        for flag in ("--daily", "--validate", "--verbose", "--quant"):
             if flag in sys.argv:
                 print(f"Erro: --duplicates não pode ser combinado com {flag}.")
                 sys.exit(1)
@@ -861,9 +859,6 @@ def main():
     if "--validate" in sys.argv:
         if quant:
             print("Erro: --quant não pode ser combinado com --validate.")
-            sys.exit(1)
-        if confirm:
-            print("Erro: --confirm não pode ser combinado com --validate.")
             sys.exit(1)
         sys.exit(validate(path, daily))
 
@@ -875,7 +870,7 @@ def main():
         output_base = path.parent
 
     declined = []
-    if confirm and path.is_dir():
+    if path.is_dir():
         confirmed = []
         for f in files:
             if confirm_file(f.name):

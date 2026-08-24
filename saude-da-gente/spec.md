@@ -241,9 +241,8 @@ The date tag is the full ISO date `YYYY-MM-DD`. Resolution order per row:
 | Command | Behavior |
 |---|---|
 | `process <file.xlsx>` | Process a single file. |
-| `process <folder/>` | Process every `.xlsx` in the folder. |
+| `process <folder/>` | Process every `.xlsx` in the folder, prompting `y/n` per file **before** processing (Enter = yes; EOF = no). Declined files are listed at the end under `Ignorados pelo usuário:`. |
 | `process --daily <file or folder>` | Also emit combined daily files (`YYYY-MM-DD.csv`). |
-| `process --confirm <folder/>` | Prompt `y/n` per discovered `.xlsx` **before** processing (folders only; Enter = yes; EOF = no). Declined files are listed at the end under `Ignorados pelo usuário:`. |
 | `process --verbose <file or folder>` | Extra per-sheet detail (columns, skips). |
 | `process --validate <file or folder>` | Compare generated outputs against inputs; full report. |
 | `process --validate --daily <file or folder>` | Also validate the combined daily files. |
@@ -257,8 +256,7 @@ Every generated CSV line in the console output is annotated `[novo]` (file creat
 `[sobrescrito]` (an existing file was replaced), including the combined daily files.
 
 `--duplicates` is **standalone**: it must not be combined with `--daily`, `--validate`,
-`--verbose`, `--quant`, or `--confirm` (error + exit code 1). `--validate` also rejects
-`--quant` and `--confirm`.
+`--verbose`, or `--quant` (error + exit code 1). `--validate` also rejects `--quant`.
 
 ---
 
