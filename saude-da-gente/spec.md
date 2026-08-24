@@ -98,6 +98,13 @@ Output is written **in the same folder as the input** (`output_base`).
 - One file per date, at the same level as the day folders.
 - Contains **all specialties** for that day.
 - Rows are kept in **source order** (the order they appear across input files).
+- **Patient collapsing**: a patient repeated on the same date (across several
+  specialties or several times within one) becomes a **single row**. Identity is the
+  whitespace-collapsed, case-insensitive name (`ANA SILVA` = `ana  silva`). Phones from
+  all occurrences are united — the best one (9-digit mobile starting with `9`, else the
+  first) goes to `Telefone`, the rest to `Notas Internas`. The Etiquetas specialty slot
+  lists every distinct specialty in first-appearance order:
+  `<date>, Automação, <Spec1>, <Spec2>, ..., SaudeDaGente, Marajo`.
 - File name uses the full ISO date (e.g. `2026-08-24.csv`).
 
 ### 3.3 CSV file format (both output kinds)

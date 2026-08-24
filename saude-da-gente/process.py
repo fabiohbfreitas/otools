@@ -25,6 +25,10 @@ Usage:
 Every processing run ends with an independent verification pass: the workbooks are
 reloaded and re-derived from scratch and compared against the generated CSVs
 (exit 1 on any difference).
+
+Daily combined files collapse repeated patients into a single row: identity is the
+case/space-insensitive name, phones are united (mobile preferred, leftovers in
+Notas Internas), and the specialty tag lists every distinct specialty.
 """
 import csv
 import re
@@ -391,6 +395,9 @@ def build_quant_groups(ws, cols):
         if not telefone.strip():
             nome, telefone = split_trailing_phone(nome)
         canonical = resolve_row_specialty(row[cols["especialidade"]])
+        if not canonical:
+            skipped += 1
+            continue
         out = build_row(nome, telefone, canonical, date)
         ordered.append((out, date))
         groups.setdefault((date, canonical), []).append((out, 2 + i))
@@ -438,7 +445,7 @@ def process_file_quant(file_path, output_base, daily_rows=None, verbose=False):
             write_csv_rows(rows, path)
             created.append((len(rows), path, skipped, existed))
             if verbose:
-                print(f"  {sheet}/{date}/{canonical}: {len(rows)} linhas | {skipped} sem data")
+                print(f"  {sheet}/{date}/{canonical}: {len(rows)} linhas | {skipped} sem data/especialidade")
     return created
 
 
@@ -476,6 +483,51 @@ def collect_row_phones(row):
 
 def name_key(nome):
     return " ".join(nome.split()).casefold()
+
+
+def merge_daily_rows(rows):
+    """One row per patient: unite phones, join distinct specialty tags.
+
+    Daily combined files concatenate every specialty's rows, so a patient
+    booked in multiple specialties (or several times in one) would repeat.
+    This collapses them: identity is the whitespace-collapsed casefolded
+    name; phones are united (best picked, leftovers to Notas Internas);
+    the Etiquetas specialty slot carries every distinct specialty in
+    first-appearance order.
+    """
+    order = []
+    acc = {}
+    for row in rows:
+        key = name_key(row.get("Nome", ""))
+        entry = acc.get(key)
+        if entry is None:
+            entry = {"nome": row.get("Nome", ""), "phones": [], "specs": [], "date": ""}
+            acc[key] = entry
+            order.append(key)
+        for field in ("Telefone", "Notas Internas"):
+            for p in extract_phones(row.get(field, "")):
+                if p not in entry["phones"]:
+                    entry["phones"].append(p)
+        elements = row.get("Etiquetas", "").split(", ")
+        specs = elements[2:-2] if len(elements) >= 5 else []
+        for s in specs:
+            if s not in entry["specs"]:
+                entry["specs"].append(s)
+        if not entry["date"] and elements:
+            entry["date"] = elements[0]
+    merged = []
+    for key in order:
+        e = acc[key]
+        chosen, remaining = pick_phone(e["phones"])
+        merged.append({
+            "Nome": e["nome"],
+            "Telefone": chosen,
+            "Etiquetas": ", ".join(
+                [e["date"], AUTOMACAO_TAG] + e["specs"] + [SAUDE_TAG, LOCAL_TAG]
+            ),
+            "Notas Internas": f"Outros telefones: {remaining}" if remaining else "",
+        })
+    return merged
 
 
 def find_duplicates(rows):
@@ -722,9 +774,10 @@ def verify_run(files, output_base, daily, quant=False):
     if daily:
         lines.append("Diário:")
         for date in sorted(daily_expected):
+            merged = merge_daily_rows([out for out, _, _ in daily_expected[date]])
             _report_sheet(
                 lines, totals, f"{date}.csv",
-                daily_expected[date],
+                [(m, 0, date) for m in merged],
                 output_base / f"{date}.csv",
             )
 
@@ -832,6 +885,27 @@ def selftest():
     assert len(g1) == 2 and g1[0][0] == "BRUNO COSTA" and g1[1][0] == "CARLOS DIAS"
     assert g1[0][2] == "2026-08-24" and g1[1][2] == "2026-08-25"
 
+    merged = merge_daily_rows([
+        build_row("ANA SILVA", "(61) 3331-5174", "Cardiologia", "2026-08-26"),
+        build_row("ana  silva", "(61) 99877-1234", "Dermatologia", "2026-08-26"),
+        build_row("RONALDO LINS", "(61) 99518-2931", "Tomografia", "2026-08-26"),
+        build_row("RONALDO LINS", "(61) 99518-2931", "Tomografia", "2026-08-26"),
+        build_row("BRUNO COSTA", "", "Pediatria", "2026-08-26"),
+    ])
+    assert len(merged) == 3
+    ana = merged[0]
+    assert ana["Nome"] == "ANA SILVA"
+    assert ana["Telefone"] == "(61) 99877-1234"
+    assert ana["Notas Internas"] == "Outros telefones: (61) 3331-5174"
+    assert ana["Etiquetas"] == \
+        "2026-08-26, Automação, Cardiologia, Dermatologia, SaudeDaGente, Marajo"
+    ron = merged[1]
+    assert ron["Etiquetas"] == "2026-08-26, Automação, Tomografia, SaudeDaGente, Marajo"
+    assert ron["Telefone"] == "(61) 99518-2931" and ron["Notas Internas"] == ""
+    assert merged[2]["Telefone"] == "" and merged[2]["Notas Internas"] == ""
+    assert merged[2]["Etiquetas"] == \
+        "2026-08-26, Automação, Pediatria, SaudeDaGente, Marajo"
+
     assert resolve_row_specialty("GINECOLOGISTA") == "Ginecologia"
     assert resolve_row_specialty("Cardiologia") == "Cardiologia"
     assert resolve_row_specialty("Exames laboratoriais") == "ExameLaboratorial"
@@ -888,9 +962,10 @@ def selftest():
     wsq.append([1, "A", "(61) 99999-0001", datetime(2026, 8, 26), "", "GINECOLOGISTA", "x"])
     wsq.append([2, "B", "(61) 99999-0002", datetime(2026, 8, 26), "", "GINECOLOGISTA", "x"])
     wsq.append([3, "C", "(61) 99999-0003", "", "", "GINECOLOGISTA", "x"])
+    wsq.append([4, "D", "(61) 99999-0004", datetime(2026, 8, 26), "", "", "x"])
     colsq = resolve_columns(["QUANT.", "Nome", "Telefone", "Data", "Hora", "Especialidade", "Local"])
     ordered, qgroups, qskipped = build_quant_groups(wsq, colsq)
-    assert len(ordered) == 2 and qskipped == 1
+    assert len(ordered) == 2 and qskipped == 2
     assert set(qgroups) == {("2026-08-26", "Ginecologia")}
     assert [rn for _, rn in qgroups[("2026-08-26", "Ginecologia")]] == [2, 3]
     assert ordered[0][1] == "2026-08-26"
@@ -984,7 +1059,7 @@ def main():
             for count, p, skip, existed in created:
                 line = f"      {count:5d}  {p}"
                 if skip:
-                    line += f"  ({skip} sem data)"
+                    line += f"  ({skip} sem data/especialidade)"
                 line += "  [sobrescrito]" if existed else "  [novo]"
                 print(line)
             grand_total += total
@@ -1013,7 +1088,7 @@ def main():
         for date, rows in sorted(daily_rows.items()):
             path = output_base / f"{date}.csv"
             existed = path.exists()
-            write_csv_rows(rows, path)
+            write_csv_rows(merge_daily_rows(rows), path)
             mark = "[sobrescrito]" if existed else "[novo]"
             print(f"Diário: {len(rows):5d}  {path}  {mark}")
 
