@@ -44,8 +44,6 @@ from process import (
     write_csv_rows,
 )
 
-EXCLUDE_SPECIALTIES = {"ExameLaboratorial"}
-
 PRIORITY = ["NuncaEnviado", "SemWhatsApp", "NaoVisto", "LidoSemInteracao"]
 
 OUTPUT_NAME = "recaptacao.csv"
@@ -83,12 +81,12 @@ def load_reports(folder):
 
 
 def load_sources(folder):
-    """Map canonical specialty -> list of source rows, skipping exclusions."""
+    """Map canonical specialty -> list of source rows."""
     sources = {}
     for p in sorted(folder.glob("*.csv")):
-        canonical = canonical_from_stem(p.stem)
-        if canonical in EXCLUDE_SPECIALTIES:
+        if p.name == OUTPUT_NAME:
             continue
+        canonical = canonical_from_stem(p.stem)
         with open(p, encoding="utf-8-sig", newline="") as f:
             sources.setdefault(canonical, []).extend(
                 row for row in csv.DictReader(f) if row.get("Nome", "").strip()
