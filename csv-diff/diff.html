@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSV Diff — A minus B</title>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --panel: #121212;
+      --border: #262626;
+      --text: #e5e5e5;
+      --text-muted: #a3a3a3;
+      --accent: #ffffff;
+      --accent-dim: #f5f5f5;
+      --danger: #f87171;
+      --success: #4ade80;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 2rem 1rem;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      max-width: 960px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1rem;
+    }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      color: var(--accent);
+    }
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+    }
+    .config-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      background-color: var(--panel);
+      padding: 1.25rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    label .hint {
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: 400;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+    }
+    input[type="text"],
+    input[type="file"] {
+      background-color: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.5rem;
+      font-family: inherit;
+      font-size: 0.85rem;
+      border-radius: 2px;
+      outline: none;
+      width: 100%;
+    }
+    input:focus { border-color: var(--accent); }
+    input[type="file"]::file-selector-button {
+      background-color: var(--accent);
+      color: var(--bg);
+      border: none;
+      padding: 0.25rem 0.75rem;
+      margin-right: 0.75rem;
+      border-radius: 2px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    input[type="file"]::file-selector-button:hover { background-color: var(--accent-dim); }
+    .file-meta {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      min-height: 1em;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    button {
+      background-color: var(--accent);
+      color: var(--bg);
+      border: none;
+      padding: 0.625rem 1.5rem;
+      font-weight: 600;
+      border-radius: 2px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: background-color 0.1s ease, opacity 0.1s;
+    }
+    button:hover:not(:disabled) { background-color: var(--accent-dim); }
+    button:disabled { opacity: 0.3; cursor: not-allowed; }
+    button.secondary {
+      background-color: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button.secondary:hover:not(:disabled) { background-color: var(--panel); border-color: var(--text-muted); }
+    .stats {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      background-color: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.75rem 1rem;
+      font-size: 0.8rem;
+    }
+    .stats b { color: var(--text); font-weight: 700; }
+    .stats .ok { color: var(--success); }
+    .stats .err { color: var(--danger); }
+    .status {
+      font-size: 0.8rem;
+      min-height: 1.2em;
+      color: var(--text-muted);
+    }
+    .status.err { color: var(--danger); }
+    .status.ok { color: var(--success); }
+    .panel {
+      border: 1px solid var(--border);
+      background-color: var(--panel);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .panel-hint { font-size: 0.7rem; color: var(--text-muted); }
+    .table-wrapper { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th, td {
+      padding: 0.65rem 0.85rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.78rem;
+      white-space: nowrap;
+      max-width: 320px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    th { background-color: rgba(255,255,255,0.02); color: var(--text); font-weight: 600; }
+    td { color: var(--text); }
+    tr:last-child td { border-bottom: none; }
+    .empty-state { padding: 3rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>CSV Diff — A minus B</h1>
+      <p class="subtitle">Keep rows that are in the first spreadsheet but not in the second. Match key: <b>Nome + Telefone</b> (normalized). Both files must share the same columns.</p>
+    </header>
+
+    <div class="config-grid">
+      <div class="field">
+        <label for="fileA">File A — source / full <span class="hint">(A \ B)</span></label>
+        <input type="file" id="fileA" accept=".csv">
+        <div class="file-meta" id="metaA"></div>
+      </div>
+      <div class="field">
+        <label for="fileB">File B — already imported</label>
+        <input type="file" id="fileB" accept=".csv">
+        <div class="file-meta" id="metaB"></div>
+      </div>
+      <div class="field">
+        <label for="outName">Output file name</label>
+        <input type="text" id="outName" value="diff.csv" spellcheck="false">
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="clearBtn" class="secondary">Clear</button>
+      <button id="computeBtn" disabled>Compute Diff</button>
+    </div>
+
+    <div class="stats" id="stats" style="display:none"></div>
+    <div class="status" id="status"></div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Preview — first 10 rows of diff</span>
+        <span class="panel-hint" id="previewHint"></span>
+      </div>
+      <div class="table-wrapper" id="previewContainer">
+        <div class="empty-state">Load File A and File B above, then click Compute Diff.</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="downloadBtn" disabled>Download Diff CSV</button>
+    </div>
+  </div>
+
+  <script>
+    let rawA = null, rawB = null;
+    let parsedA = null, parsedB = null;
+    let diffRows = []; // array of arrays including header
+    let headers = [];
+
+    const fileA = document.getElementById('fileA');
+    const fileB = document.getElementById('fileB');
+    const outName = document.getElementById('outName');
+    const metaA = document.getElementById('metaA');
+    const metaB = document.getElementById('metaB');
+    const computeBtn = document.getElementById('computeBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const statsEl = document.getElementById('stats');
+    const statusEl = document.getElementById('status');
+    const previewContainer = document.getElementById('previewContainer');
+    const previewHint = document.getElementById('previewHint');
+
+    // RFC 4180 parser — handles quoted fields, escaped "", CRLF, commas
+    function parseCSV(text) {
+      const rows = [];
+      let row = [''];
+      let inQuotes = false;
+      // strip BOM for parsing but keep for header detection
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        const n = text[i + 1];
+        if (c === '"') {
+          if (inQuotes && n === '"') { row[row.length - 1] += '"'; i++; }
+          else { inQuotes = !inQuotes; }
+        } else if (c === ',' && !inQuotes) {
+          row.push('');
+        } else if ((c === '\r' || c === '\n') && !inQuotes) {
+          if (c === '\r' && n === '\n') i++;
+          rows.push(row);
+          row = [''];
+        } else {
+          row[row.length - 1] += c;
+        }
+      }
+      if (row.length > 1 || row[0] !== '') rows.push(row);
+      // remove completely empty trailing rows
+      while (rows.length && rows[rows.length - 1].every(v => v.trim() === '')) rows.pop();
+      return rows;
+    }
+
+    function formatMeta(file, parsed) {
+      if (!file || !parsed) return '';
+      const r = parsed.length > 0 ? parsed.length - 1 : 0;
+      const c = parsed.length > 0 ? parsed[0].length : 0;
+      return `${file.name} — ${r} rows, ${c} cols`;
+    }
+
+    function normalizeNome(s) {
+      return (s || '').trim().replace(/\s+/g, ' ').toUpperCase();
+    }
+    function normalizePhone(s) {
+      return (s || '').replace(/\D/g, '');
+    }
+
+    function updateComputeState() {
+      computeBtn.disabled = !(parsedA && parsedB);
+      if (parsedA && parsedB) statusEl.textContent = '';
+    }
+
+    function handleFile(inputEl, metaEl, slot) {
+      const file = inputEl.files[0];
+      if (!file) {
+        if (slot === 'A') { rawA = null; parsedA = null; }
+        else { rawB = null; parsedB = null; }
+        metaEl.textContent = '';
+        updateComputeState();
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target.result;
+        if (slot === 'A') { rawA = text; parsedA = parseCSV(text); metaA.textContent = formatMeta(file, parsedA); }
+        else { rawB = text; parsedB = parseCSV(text); metaB.textContent = formatMeta(file, parsedB); }
+        updateComputeState();
+        // auto-clear previous diff when inputs change
+        diffRows = [];
+        headers = [];
+        statsEl.style.display = 'none';
+        downloadBtn.disabled = true;
+        previewHint.textContent = '';
+        previewContainer.innerHTML = '<div class="empty-state">Click Compute Diff to preview the result.</div>';
+        statusEl.textContent = '';
+        statusEl.className = 'status';
+      };
+      reader.readAsText(file);
+    }
+
+    fileA.addEventListener('change', () => handleFile(fileA, metaA, 'A'));
+    fileB.addEventListener('change', () => handleFile(fileB, metaB, 'B'));
+
+    function escapeHtml(s) {
+      if (!s) return '';
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+
+    function computeDiff() {
+      if (!parsedA || !parsedB) return;
+      if (parsedA.length === 0 || parsedB.length === 0) {
+        statusEl.textContent = 'One of the files is empty.';
+        statusEl.className = 'status err';
+        return;
+      }
+      const headerA = parsedA[0].map(h => h.replace(/^\uFEFF/, '').trim());
+      const headerB = parsedB[0].map(h => h.replace(/^\uFEFF/, '').trim());
+
+      // validate columns identical (order included)
+      if (headerA.length !== headerB.length || !headerA.every((h,i) => h === headerB[i])) {
+        statusEl.textContent = `Column mismatch — A: [${headerA.join(', ')}] vs B: [${headerB.join(', ')}]`;
+        statusEl.className = 'status err';
+        statsEl.style.display = 'none';
+        previewContainer.innerHTML = '<div class="empty-state">Fix the column mismatch and try again.</div>';
+        downloadBtn.disabled = true;
+        return;
+      }
+      headers = headerA;
+      const idxNome = headers.indexOf('Nome');
+      const idxTel = headers.indexOf('Telefone');
+      if (idxNome === -1 || idxTel === -1) {
+        statusEl.textContent = 'Both files must have columns "Nome" and "Telefone" (used as the match key).';
+        statusEl.className = 'status err';
+        return;
+      }
+
+      // build Set of keys from B (skip header, skip empty rows)
+      const setB = new Set();
+      for (let i = 1; i < parsedB.length; i++) {
+        const row = parsedB[i];
+        if (row.length === 1 && row[0].trim() === '') continue;
+        const k = normalizeNome(row[idxNome]) + '|' + normalizePhone(row[idxTel]);
+        setB.add(k);
+      }
+
+      // filter A
+      diffRows = [headers];
+      for (let i = 1; i < parsedA.length; i++) {
+        const row = parsedA[i];
+        if (row.length === 1 && row[0].trim() === '') continue;
+        // pad/truncate to header length for consistent output
+        const fullRow = headers.map((_, c) => row[c] !== undefined ? row[c] : '');
+        const k = normalizeNome(fullRow[idxNome]) + '|' + normalizePhone(fullRow[idxTel]);
+        if (!setB.has(k)) diffRows.push(fullRow);
+      }
+
+      const countA = parsedA.length - 1;
+      const countB = parsedB.length - 1;
+      const countDiff = diffRows.length - 1;
+
+      statsEl.style.display = 'flex';
+      statsEl.innerHTML = `<span>A: <b>${countA}</b> rows</span><span>B: <b>${countB}</b> rows</span><span>Diff (A \\ B): <b>${countDiff}</b> rows</span><span class="ok">Columns OK — [${escapeHtml(headers.join(', '))}]</span>`;
+      previewHint.textContent = countDiff === 0 ? 'empty' : `${countDiff} rows`;
+
+      if (countDiff === 0) {
+        statusEl.textContent = 'Diff is empty — every row in A already exists in B (by Nome+Telefone).';
+        statusEl.className = 'status ok';
+        previewContainer.innerHTML = '<div class="empty-state">No new rows to import — diff is empty.</div>';
+        downloadBtn.disabled = true;
+      } else {
+        statusEl.textContent = `Diff ready — ${countDiff} rows in A not found in B.`;
+        statusEl.className = 'status ok';
+        downloadBtn.disabled = false;
+        renderPreview(diffRows);
+      }
+    }
+
+    function renderPreview(rows) {
+      const preview = rows.slice(0, 11); // header + 10
+      let html = '<table><thead><tr>';
+      preview[0].forEach(h => html += `<th>${escapeHtml(h)}</th>`);
+      html += '</tr></thead><tbody>';
+      for (let i = 1; i < preview.length; i++) {
+        html += '<tr>';
+        preview[i].forEach(v => html += `<td>${escapeHtml(v) || '<span style="color:var(--text-muted)">—</span>'}</td>`);
+        html += '</tr>';
+      }
+      html += '</tbody></table>';
+      if (rows.length - 1 > 10) {
+        html += `<div style="padding:0.5rem 1rem;color:var(--text-muted);font-size:0.7rem;border-top:1px solid var(--border)">... and ${rows.length - 11} more rows in the download</div>`;
+      }
+      previewContainer.innerHTML = html;
+    }
+
+    function generateCSV(rows) {
+      const esc = (v) => {
+        const s = v == null ? '' : String(v);
+        if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\r')) return '"' + s.replace(/"/g, '""') + '"';
+        return s;
+      };
+      return rows.map(r => r.map(esc).join(',')).join('\r\n');
+    }
+
+    computeBtn.addEventListener('click', computeDiff);
+
+    downloadBtn.addEventListener('click', () => {
+      if (diffRows.length === 0) return;
+      const csv = generateCSV(diffRows);
+      const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      let name = outName.value.trim() || 'diff.csv';
+      if (!name.toLowerCase().endsWith('.csv')) name += '.csv';
+      a.href = url; a.download = name; a.style.display = 'none';
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+      statusEl.textContent = `Downloaded "${name}" — ${diffRows.length - 1} rows.`;
+      statusEl.className = 'status ok';
+    });
+
+    clearBtn.addEventListener('click', () => {
+      fileA.value = ''; fileB.value = '';
+      rawA = rawB = null; parsedA = parsedB = null; diffRows = []; headers = [];
+      metaA.textContent = ''; metaB.textContent = '';
+      statsEl.style.display = 'none'; statusEl.textContent = ''; statusEl.className = 'status';
+      previewContainer.innerHTML = '<div class="empty-state">Load File A and File B above, then click Compute Diff.</div>';
+      previewHint.textContent = '';
+      computeBtn.disabled = true; downloadBtn.disabled = true;
+    });
+  </script>
+</body>
+</html>
