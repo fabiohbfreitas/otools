@@ -1,0 +1,12 @@
+{
+  "name": "campaign-creator",
+  "version": "1.0.0",
+  "description": "Helper previsível para criar campanhas Fasterisk em rascunho via agent-browser",
+  "type": "module",
+  "bin": {
+    "campaign-create": "./create.js"
+  },
+  "scripts": {
+    "create": "node create.js"
+  }
+}

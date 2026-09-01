@@ -1,0 +1,21 @@
+{
+  "campanha": {
+    "local": "Gama",
+    "especialidade": "Ortopedia",
+    "data": "02/09/2026",
+    "horario": "08:00"
+  },
+  "nome": "[TESTE-FABIO 01/09/2026] [Automacao] Mensagem de Confirmacao de Consultas - RASCUNHO (nao disparar)",
+  "equipe": "[TI] Testes de Automação",
+  "canal": "(61) 3181-8444",
+  "parametros": {
+    "especialidade": "Ortopedia - TESTE",
+    "data": "02/09/2026",
+    "horario": "08:00",
+    "local": "UBS Teste - Gama DF (Ficticio - Rascunho)",
+    "linkmaps": "https://maps.app.goo.gl/teste-ficticio-rascunho"
+  },
+  "audiencia": {
+    "etiqueta": "Teste"
+  }
+}
