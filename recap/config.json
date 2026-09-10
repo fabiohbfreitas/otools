@@ -1,0 +1,22 @@
+{
+  "slots": ["07:30", "08:15", "09:00", "09:45", "10:30", "11:15"],
+  "min_por_horario": 7,
+  "etiqueta_template": "{data_iso}, Automação, {polo}, {esp}, {agenda}",
+  "polos": {
+    "Sobradinho": {
+      "endereco": "Centro Clínico Sobradinho - Q 8 ao lado do Hospital Regional de Sobradinho - Sobradinho, Brasília - DF, 73005-080",
+      "link": "https://maps.app.goo.gl/bwhpSzdVEsBn3bDb9",
+      "especialidades": {}
+    },
+    "Samambaia": {
+      "endereco": "Clinica Multi Medici -  Qs 122 conjunto 03 lote 12,13,14 Edifício Cardio Medici - Samambaia, Brasília - DF, 72304-523",
+      "link": "https://maps.app.goo.gl/pXGfqqUN1TACkwsd7",
+      "especialidades": {}
+    },
+    "Gama": {
+      "endereco": "Centro de Imagens do Gama - Quadra 10 Lote 16/17 Setor Lojas 1 e 2 - Gama Oeste, Brasília - DF, 72425-132",
+      "link": "https://maps.app.goo.gl/tpu3EdUojQnr8HS56?g_st=ic",
+      "especialidades": {}
+    }
+  }
+}
