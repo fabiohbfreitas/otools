@@ -500,6 +500,21 @@ function deriveEspecialidade(procedimento) {
     return '';
 }
 
+function toTitleCasePt(s) {
+    return s.toLowerCase().replace(/(^|[\s\/(-])([a-z\u00E0-\u00FF])/g, (_, p1, p2) => p1 + p2.toUpperCase());
+}
+
+function extractSubespecialidade(procedimento) {
+    if (!procedimento) return '';
+    let clean = String(procedimento).replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+    clean = clean.replace(/^\d+\s*-\s*/, '');
+    const norm = clean.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    const prefix = 'CONSULTA EM ';
+    if (norm.startsWith(prefix)) clean = clean.slice(prefix.length).trim();
+    if (!clean.includes('-')) return '';
+    return clean.split('-').map(p => toTitleCasePt(p.trim())).filter(Boolean).join(' - ');
+}
+
 function getSituacaoQualifier(tds) {
     for (const td of tds) {
         const text = td.textContent.trim().replace(/\u00A0/g, ' ');
@@ -546,6 +561,7 @@ function parseNaoConsultadosHTML(confirmHTMLs) {
 
         let procedimento = '';
         doc.querySelectorAll('tr').forEach(row => {
+            if (procedimento) return;
             const rowTds = row.querySelectorAll('td');
             if (rowTds.length >= 2 && rowTds[0].textContent.trim().includes('Procedimento')) {
                 procedimento = rowTds[1].textContent.trim();
@@ -558,7 +574,7 @@ function parseNaoConsultadosHTML(confirmHTMLs) {
             Data: data,
             Horário: horario,
             Unidade: localSel.value,
-            Especialidade: deriveEspecialidade(procedimento),
+            Especialidade: extractSubespecialidade(procedimento) || deriveEspecialidade(procedimento),
             Situação: hasChave ? 'Não consultado' : situacaoQualifier,
             Observação: solicitacao ? `Solicitação: ${solicitacao}` : ''
         });
