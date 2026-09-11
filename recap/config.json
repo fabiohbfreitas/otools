@@ -1,7 +1,8 @@
 {
   "slots": ["07:30", "08:15", "09:00", "09:45", "10:30", "11:15"],
-  "min_por_horario": 7,
+  "min_por_horario": 5,
   "etiqueta_template": "{data_iso}, Automação, {polo}, {esp}, {agenda}",
+  "etiqueta_envios": "{data_iso}, Automação, {esp}, {polo}, {agenda}",
   "polos": {
     "Sobradinho": {
       "endereco": "Centro Clínico Sobradinho - Q 8 ao lado do Hospital Regional de Sobradinho - Sobradinho, Brasília - DF, 73005-080",
@@ -9,8 +10,8 @@
       "especialidades": {}
     },
     "Samambaia": {
-      "endereco": "Clinica Multi Medici -  Qs 122 conjunto 03 lote 12,13,14 Edifício Cardio Medici - Samambaia, Brasília - DF, 72304-523",
-      "link": "https://maps.app.goo.gl/pXGfqqUN1TACkwsd7",
+      "endereco": "Centro Clínico Samambaia - QS 122 Conjunto 3 lote 01/06 - Samambaia, Brasília - DF, 72304-523",
+      "link": "https://maps.app.goo.gl/EgtvqhUE8sEoVxEd8",
       "especialidades": {}
     },
     "Gama": {
