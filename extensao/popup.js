@@ -384,7 +384,7 @@ function runAllPipelines() {
             Data: formattedDate,
             Horário: row.Hora,
             Unidade: chosenLocal,
-            Especialidade: chosenEspecialidade,
+            Especialidade: extractSubespecialidade(row.Procedimento) || chosenEspecialidade,
             Situação: 'a confirmar',
             Observação: ''
         };
