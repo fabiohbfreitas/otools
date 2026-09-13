@@ -583,11 +583,12 @@ function buildEnviosDatasets() {
       "Telefone",
       "Notas Internas",
       "Etiquetas",
-      "Data",
-      "Hora",
-      "Especialidade",
-      "Local",
-      "LinkMaps",
+      "[paciente]",
+      "[data]",
+      "[horario]",
+      "[especialidade]",
+      "[local]",
+      "[linkmaps]",
     ],
   ];
 
@@ -618,6 +619,7 @@ function buildEnviosDatasets() {
       principal,
       outrosCell,
       tags.join(", "),
+      nome,
       formattedDate,
       row.Hora,
       espEnvios,
@@ -680,7 +682,9 @@ function downloadAsMultiSheetExcel(sheets, fileName, statusTarget) {
     const workbook = XLSX.utils.book_new();
     sheets.forEach(([name, aoa]) => {
       const ws = XLSX.utils.aoa_to_sheet(aoa);
-      const linkCol = aoa[0].indexOf("LinkMaps");
+      const linkCol = aoa[0].findIndex(
+        (h) => String(h).toLowerCase() === "[linkmaps]",
+      );
       if (linkCol !== -1) {
         for (let r = 1; r < aoa.length; r++) {
           const url = aoa[r][linkCol];
