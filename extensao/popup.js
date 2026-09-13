@@ -25,6 +25,8 @@ const dlImportedCsvBtn = document.getElementById("dlImportedCsvBtn");
 const dlImportedXlsxBtn = document.getElementById("dlImportedXlsxBtn");
 const dlTransformedXlsxBtn = document.getElementById("dlTransformedXlsxBtn");
 const dlEnviosXlsxBtn = document.getElementById("dlEnviosXlsxBtn");
+const dlEnviosPacientesBtn = document.getElementById("dlEnviosPacientesBtn");
+const dlEnviosEnviosBtn = document.getElementById("dlEnviosEnviosBtn");
 const addNaoConsultadosBtn = document.getElementById("addNaoConsultadosBtn");
 const dlNaoConsultadosXlsxBtn = document.getElementById(
   "dlNaoConsultadosXlsxBtn",
@@ -98,6 +100,8 @@ dlImportedCsvBtn.addEventListener("click", () => downloadImportedData("csv"));
 dlImportedXlsxBtn.addEventListener("click", () => downloadImportedData("xlsx"));
 dlTransformedXlsxBtn.addEventListener("click", () => downloadTransformedData());
 dlEnviosXlsxBtn.addEventListener("click", downloadEnviosData);
+dlEnviosPacientesBtn.addEventListener("click", downloadEnviosPacientesData);
+dlEnviosEnviosBtn.addEventListener("click", downloadEnviosEnviosData);
 dlNaoConsultadosXlsxBtn.addEventListener("click", downloadNaoConsultadosData);
 addNaoConsultadosBtn.addEventListener("click", addNaoConsultadosPending);
 clearNaoConsultadosBtn.addEventListener("click", clearNaoConsultadosData);
@@ -395,6 +399,8 @@ function runAllPipelines() {
     dlImportedXlsxBtn.disabled = true;
     dlTransformedXlsxBtn.disabled = true;
     dlEnviosXlsxBtn.disabled = true;
+    dlEnviosPacientesBtn.disabled = true;
+    dlEnviosEnviosBtn.disabled = true;
     return;
   }
   const refDate = refDateInput.value;
@@ -462,6 +468,8 @@ function runAllPipelines() {
   dlImportedXlsxBtn.disabled = false;
   dlTransformedXlsxBtn.disabled = false;
   dlEnviosXlsxBtn.disabled = false;
+  dlEnviosPacientesBtn.disabled = false;
+  dlEnviosEnviosBtn.disabled = false;
 }
 
 /* ==========================================
@@ -587,8 +595,9 @@ function buildEnviosDatasets() {
     const nome = row.Nome ? row.Nome.trim() : "";
     const { principal, outros } = splitEnviosPhones(row.Telefones);
     const outrosCell = outros ? `Outros Telefones: ${outros}` : "";
-    const esp =
+    const espPacientes =
       extractSubespecialidade(row.Procedimento) || chosenEspecialidade;
+    const espEnvios = chosenEspecialidade;
     const tags = [refDate, "Automação"];
     if (chosenEspecialidade) tags.push(chosenEspecialidade);
     if (chosenLocal) tags.push(chosenLocal);
@@ -601,7 +610,7 @@ function buildEnviosDatasets() {
       outrosCell,
       formattedDate,
       row.Hora,
-      esp,
+      espPacientes,
       chosenLocal,
     ]);
     envios.push([
@@ -611,7 +620,7 @@ function buildEnviosDatasets() {
       tags.join(", "),
       formattedDate,
       row.Hora,
-      esp,
+      espEnvios,
       details.endereco,
       details.maps,
     ]);
@@ -620,14 +629,16 @@ function buildEnviosDatasets() {
   return { pacientes, envios, maps: details.maps };
 }
 
-function getEnviosFileName() {
+function getEnviosFileName(suffix) {
   const parts = (refDateInput.value || "").split("-");
   const ddmm = parts.length === 3 ? `${parts[2]}_${parts[1]}` : "data";
-  const esp = (especialidadeSel.value || "Envios").replace(
-    /[^a-zA-Z0-9_\-]/g,
-    "_",
-  );
-  return `${esp} ${ddmm}.xlsx`;
+  const esp = (especialidadeSel.value || "").trim() || "Envios";
+  const loc = (localSel.value || "").trim();
+  const baseParts = [ddmm, esp];
+  if (loc) baseParts.push(loc);
+  const base = baseParts.join(" ").replace(/[\\\/\?\*\:\[\]]/g, "");
+  const suf = suffix ? ` ${suffix}` : "";
+  return `${base}${suf}.xlsx`;
 }
 
 function downloadEnviosData() {
@@ -639,6 +650,24 @@ function downloadEnviosData() {
       ["Envios", envios],
     ],
     getEnviosFileName(),
+  );
+}
+
+function downloadEnviosPacientesData() {
+  if (parsedSourceRows.length === 0) return;
+  const { pacientes } = buildEnviosDatasets();
+  downloadAsMultiSheetExcel(
+    [["Pacientes", pacientes]],
+    getEnviosFileName("Pacientes"),
+  );
+}
+
+function downloadEnviosEnviosData() {
+  if (parsedSourceRows.length === 0) return;
+  const { envios } = buildEnviosDatasets();
+  downloadAsMultiSheetExcel(
+    [["Envios", envios]],
+    getEnviosFileName("Envios"),
   );
 }
 
