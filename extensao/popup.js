@@ -3,8 +3,6 @@
    ========================================== */
 let rawTableHTML = "";
 let parsedSourceRows = []; // Standardized structural rows
-let importedData = []; // WhatsApp-optimized pipeline output
-let transformedData = []; // 8-column structured output
 let naoConsultadosPending = []; // Parsed rows from the current page (tblConfirmacao)
 let naoConsultadosAccum = []; // Deduplicated accumulation across pages
 let statusTimeout;
@@ -14,15 +12,16 @@ const refDateInput = document.getElementById("refDate");
 const especialidadeSel = document.getElementById("especialidadeSel");
 const localSel = document.getElementById("localSel");
 const exportNameInput = document.getElementById("exportNameInput");
-const groupNamesInput = document.getElementById("groupNamesInput");
+const refDateDisplay = document.getElementById("refDateDisplay");
+const especialidadeDisplay = document.getElementById("especialidadeDisplay");
+const localDisplay = document.getElementById("localDisplay");
+const exportNameDisplay = document.getElementById("exportNameDisplay");
 const statusMsg = document.getElementById("status");
 const statusNaoConsultadosMsg = document.getElementById("statusNaoConsultados");
 const loadingContainer = document.getElementById("loadingContainer");
 
 const refreshBtn = document.getElementById("refreshBtn");
 const copyHtmlBtn = document.getElementById("copyHtmlBtn");
-const dlImportedCsvBtn = document.getElementById("dlImportedCsvBtn");
-const dlImportedXlsxBtn = document.getElementById("dlImportedXlsxBtn");
 const dlTransformedXlsxBtn = document.getElementById("dlTransformedXlsxBtn");
 const dlEnviosXlsxBtn = document.getElementById("dlEnviosXlsxBtn");
 const dlEnviosPacientesBtn = document.getElementById("dlEnviosPacientesBtn");
@@ -96,9 +95,7 @@ localSel.addEventListener("change", () => {
   runAllPipelines();
 });
 
-dlImportedCsvBtn.addEventListener("click", () => downloadImportedData("csv"));
-dlImportedXlsxBtn.addEventListener("click", () => downloadImportedData("xlsx"));
-dlTransformedXlsxBtn.addEventListener("click", () => downloadTransformedData());
+dlTransformedXlsxBtn.addEventListener("click", downloadEnviosPacientesData);
 dlEnviosXlsxBtn.addEventListener("click", downloadEnviosData);
 dlEnviosPacientesBtn.addEventListener("click", downloadEnviosPacientesData);
 dlEnviosEnviosBtn.addEventListener("click", downloadEnviosEnviosData);
@@ -393,79 +390,13 @@ function extractPhones(phoneStr) {
    ========================================== */
 function runAllPipelines() {
   if (parsedSourceRows.length === 0) {
-    importedData = [];
-    transformedData = [];
-    dlImportedCsvBtn.disabled = true;
-    dlImportedXlsxBtn.disabled = true;
     dlTransformedXlsxBtn.disabled = true;
     dlEnviosXlsxBtn.disabled = true;
     dlEnviosPacientesBtn.disabled = true;
     dlEnviosEnviosBtn.disabled = true;
     return;
   }
-  const refDate = refDateInput.value;
-  const chosenEspecialidade = especialidadeSel.value;
-  const chosenLocal = localSel.value;
 
-  // 1. Generate "Imported" Base Dataset (Prioritizing Brazilian Mobile numbers for WhatsApp)
-  importedData = parsedSourceRows.map((row) => {
-    const nome = row.Nome ? row.Nome.trim() : "";
-    const parsedPhones = extractPhones(row.Telefones);
-
-    let targetIndex = parsedPhones.findIndex((num) => {
-      const digits = num.trim().replace(/\D/g, "");
-      const mainNumber = digits.substring(2);
-      return mainNumber.length === 9 && mainNumber.startsWith("9");
-    });
-
-    if (targetIndex === -1 && parsedPhones.length > 0) {
-      targetIndex = 0;
-    }
-
-    const chosenPhone = targetIndex !== -1 ? parsedPhones[targetIndex] : "";
-    const remainderList = parsedPhones.filter((_, idx) => idx !== targetIndex);
-    const remainingPhones = remainderList.join(", ");
-
-    const tags = [refDate, "Automação"];
-    if (chosenEspecialidade) tags.push(chosenEspecialidade);
-    if (chosenLocal) tags.push(chosenLocal);
-    const etiquetas = tags.join(", ");
-
-    let notasInternas = "";
-    if (remainingPhones) {
-      notasInternas = `Outros telefones: ${remainingPhones}`;
-    }
-
-    return {
-      Nome: nome,
-      Telefone: chosenPhone,
-      Etiquetas: etiquetas,
-      NotasInternas: notasInternas,
-      Hora: row.Hora,
-    };
-  });
-
-  // 2. Generate "Transformed" Dataset (8-column structured)
-  transformedData = parsedSourceRows.map((row) => {
-    const nome = row.Nome ? row.Nome.trim() : "";
-    const allPhonesParsed = extractPhones(row.Telefones).join(", ");
-    const formattedDate = formatToBrazilianDate(refDate);
-
-    return {
-      Paciente: nome,
-      Telefone: allPhonesParsed,
-      Data: formattedDate,
-      Horário: row.Hora,
-      Unidade: chosenLocal,
-      Especialidade:
-        extractSubespecialidade(row.Procedimento) || chosenEspecialidade,
-      Situação: "a confirmar",
-      Observação: "",
-    };
-  });
-
-  dlImportedCsvBtn.disabled = false;
-  dlImportedXlsxBtn.disabled = false;
   dlTransformedXlsxBtn.disabled = false;
   dlEnviosXlsxBtn.disabled = false;
   dlEnviosPacientesBtn.disabled = false;
@@ -473,79 +404,8 @@ function runAllPipelines() {
 }
 
 /* ==========================================
-   DOWNLOAD WRAPPERS & CONSOLIDATED GROUPING LOGIC
+   DOWNLOAD WRAPPERS
    ========================================== */
-function downloadImportedData(format) {
-  if (importedData.length === 0) return;
-
-  const filenameBase = getFileName();
-  let finalDataset = importedData.map((row) => ({ ...row }));
-
-  const rawNames = groupNamesInput.value
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (rawNames.length > 0 && rawNames.length <= finalDataset.length) {
-    const totalRecords = finalDataset.length;
-    const groupSize = Math.ceil(totalRecords / rawNames.length);
-
-    finalDataset = finalDataset.map((row, index) => {
-      const groupIndex = Math.floor(index / groupSize);
-      const tag = formatGroupTag(rawNames[groupIndex]);
-      const etq = row.Etiquetas || "";
-      const regex = /,\s*Consulta[^,]*/;
-      if (regex.test(etq)) {
-        row.Etiquetas = etq.replace(regex, `, ${tag}`);
-      } else {
-        row.Etiquetas = etq ? `${etq}, ${tag}` : tag;
-      }
-      return row;
-    });
-  } else {
-    finalDataset = finalDataset.map((row) => {
-      const tag = formatAgendaTag(row.Hora);
-      if (!tag) return row;
-      const etq = row.Etiquetas || "";
-      row.Etiquetas = etq ? `${etq}, ${tag}` : tag;
-      return row;
-    });
-  }
-
-  triggerImportedFileSave(finalDataset, filenameBase, format);
-}
-
-function triggerImportedFileSave(dataset, filename, format) {
-  if (format === "xlsx") {
-    const structuredXlsx = dataset.map((row) => ({
-      Nome: row.Nome,
-      Telefone: row.Telefone,
-      Etiquetas: row.Etiquetas,
-      "Notas Internas": row.NotasInternas,
-    }));
-    downloadAsExcel(structuredXlsx, `${filename}.xlsx`);
-  } else {
-    const importedHeaders = ["Nome", "Telefone", "Etiquetas", "Notas Internas"];
-    const importedFieldMap = { "Notas Internas": "NotasInternas" };
-    const csvString = generateCSV(dataset, importedHeaders, importedFieldMap);
-    downloadAsCSV(csvString, `${filename}.csv`);
-  }
-}
-
-function downloadTransformedData() {
-  if (transformedData.length === 0) return;
-  const filenameBase = getFileName();
-  const structured = transformedData.map((row) => ({
-    Paciente: row.Paciente,
-    Telefone: row.Telefone,
-    Data: row.Data,
-    Horário: row.Horário,
-    Unidade: row.Unidade,
-    Especialidade: row.Especialidade,
-    Situação: row.Situação,
-    Observação: row.Observação,
-  }));
-  downloadAsExcel(structured, `${filenameBase}_DadosCompletos.xlsx`);
-}
 
 /* ==========================================
    ENVIOS (Paciente + Envios, 2 abas)
@@ -631,18 +491,6 @@ function buildEnviosDatasets() {
   return { pacientes, envios, maps: details.maps };
 }
 
-function getEnviosFileName(suffix) {
-  const parts = (refDateInput.value || "").split("-");
-  const ddmm = parts.length === 3 ? `${parts[2]}_${parts[1]}` : "data";
-  const esp = (especialidadeSel.value || "").trim() || "Envios";
-  const loc = (localSel.value || "").trim();
-  const baseParts = [ddmm, esp];
-  if (loc) baseParts.push(loc);
-  const base = baseParts.join(" ").replace(/[\\\/\?\*\:\[\]]/g, "");
-  const suf = suffix ? ` ${suffix}` : "";
-  return `${base}${suf}.xlsx`;
-}
-
 function downloadEnviosData() {
   if (parsedSourceRows.length === 0) return;
   const { pacientes, envios } = buildEnviosDatasets();
@@ -651,7 +499,7 @@ function downloadEnviosData() {
       ["Pacientes", pacientes],
       ["Envios", envios],
     ],
-    getEnviosFileName(),
+    `${getFileName()}.xlsx`,
   );
 }
 
@@ -660,7 +508,7 @@ function downloadEnviosPacientesData() {
   const { pacientes } = buildEnviosDatasets();
   downloadAsMultiSheetExcel(
     [["Pacientes", pacientes]],
-    getEnviosFileName("Pacientes"),
+    `${getFileName()}-Pacientes.xlsx`,
   );
 }
 
@@ -669,7 +517,7 @@ function downloadEnviosEnviosData() {
   const { envios } = buildEnviosDatasets();
   downloadAsMultiSheetExcel(
     [["Envios", envios]],
-    getEnviosFileName("Envios"),
+    `${getFileName()}-Envios.xlsx`,
   );
 }
 
@@ -1050,6 +898,10 @@ function updateDefaultFileName() {
 
   const generatedName = nameParts.join("_").replace(/[^a-zA-Z0-9_\-]/g, "_");
   exportNameInput.value = generatedName || "processed_clinic_data";
+  if (refDateDisplay) refDateDisplay.textContent = refDate ? formatToBrazilianDate(refDate) : "—";
+  if (especialidadeDisplay) especialidadeDisplay.textContent = chosenEspecialidade || "—";
+  if (localDisplay) localDisplay.textContent = chosenLocal || "—";
+  if (exportNameDisplay) exportNameDisplay.textContent = exportNameInput.value || "—";
 }
 
 function toggleLoading(visible) {
@@ -1084,13 +936,6 @@ function getNextBusinessDay(date) {
     next.setDate(next.getDate() + 1);
   }
   return next;
-}
-
-function formatGroupTag(name) {
-  if (/^\d+$/.test(name)) return `Consulta${name.padStart(2, "0")}h`;
-  return (
-    "Consulta" + name.charAt(0).toUpperCase() + name.slice(1).toLowerCase()
-  );
 }
 
 function formatAgendaTag(hora) {

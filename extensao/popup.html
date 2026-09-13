@@ -250,52 +250,10 @@
         </div>
     </header>
 
-    <!-- CONTEXT A: Dados para Importação & Dados Completos -->
+    <!-- CONTEXT A: Lista de Pacientes -->
     <div class="card">
         <div class="card-title">Lista de Pacientes</div>
 
-        <!-- Configurations shared by both exports -->
-        <div class="config-grid">
-            <div class="field">
-                <label for="refDate">Data da Consulta</label>
-                <input type="date" id="refDate">
-            </div>
-            <div class="field">
-                <label for="especialidadeSel">Especialidade</label>
-                <select id="especialidadeSel">
-                    <option value="Ortopedia">Ortopedia</option>
-                    <option value="Cardiologia">Cardiologia</option>
-                    <option value="Otorrinolaringologia">Otorrinolaringologia</option>
-                    <option value="Ginecologia">Ginecologia</option>
-                    <option value="">(Nenhum)</option>
-                </select>
-            </div>
-            <div class="field">
-                <label for="localSel">Local</label>
-                <select id="localSel">
-                    <option value="Samambaia">Samambaia</option>
-                    <option value="Gama">Gama</option>
-                    <option value="Sobradinho">Sobradinho</option>
-                    <option value="">(Nenhum)</option>
-                </select>
-            </div>
-            <div class="field">
-                <label for="exportNameInput">Nome do Arquivo</label>
-                <input type="text" id="exportNameInput" placeholder="dados_processados">
-            </div>
-            <div class="field" style="grid-column: span 2;">
-                <label for="groupNamesInput">Horários Disponíveis</label>
-                <input type="text" id="groupNamesInput" placeholder="10,12,13">
-            </div>
-        </div>
-
-        <div class="export-row">
-            <span class="export-label">Dados para Importação</span>
-            <div class="export-buttons">
-                <button id="dlImportedCsvBtn" class="btn secondary" disabled>CSV</button>
-                <button id="dlImportedXlsxBtn" class="btn" disabled>Excel</button>
-            </div>
-        </div>
         <div class="export-row">
             <span class="export-label">Dados Completos</span>
             <div class="export-buttons">
@@ -303,13 +261,26 @@
             </div>
         </div>
         <div class="export-row">
-            <span class="export-label">Envios</span>
+            <span class="export-label">Importação</span>
             <div class="export-buttons">
-                <button id="dlEnviosXlsxBtn" class="btn" disabled>Todos</button>
+                <button id="dlEnviosXlsxBtn" class="btn secondary" disabled>Todos</button>
                 <button id="dlEnviosPacientesBtn" class="btn secondary" disabled>Pacientes</button>
-                <button id="dlEnviosEnviosBtn" class="btn secondary" disabled>Envios</button>
+                <button id="dlEnviosEnviosBtn" class="btn" disabled>Envios</button>
             </div>
         </div>
+
+        <!-- Parâmetros detectados (read-only) -->
+        <div style="border-top:1px solid var(--border); padding-top:0.6rem; display:flex; flex-direction:column; gap:0.3rem; font-size:0.75rem; color:var(--text-muted)">
+            <div><span style="text-transform:uppercase; font-size:0.6rem; letter-spacing:0.05em; font-weight:600">Data</span> <span id="refDateDisplay" style="color:var(--text-main)">—</span></div>
+            <div><span style="text-transform:uppercase; font-size:0.6rem; letter-spacing:0.05em; font-weight:600">Especialidade</span> <span id="especialidadeDisplay" style="color:var(--text-main)">—</span></div>
+            <div><span style="text-transform:uppercase; font-size:0.6rem; letter-spacing:0.05em; font-weight:600">Local</span> <span id="localDisplay" style="color:var(--text-main)">—</span></div>
+            <div><span style="text-transform:uppercase; font-size:0.6rem; letter-spacing:0.05em; font-weight:600">Arquivo</span> <span id="exportNameDisplay" style="color:var(--text-main); word-break:break-all">—</span></div>
+        </div>
+        <!-- Hidden state (no manual edit) -->
+        <input type="hidden" id="refDate">
+        <input type="hidden" id="especialidadeSel">
+        <input type="hidden" id="localSel">
+        <input type="hidden" id="exportNameInput">
 
         <div class="status-container">
             <div id="loadingContainer" class="spinner-container">
