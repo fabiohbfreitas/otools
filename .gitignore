@@ -52,3 +52,5 @@ Thumbs.db
 # Temporary files created by Excel / Office
 ~$*.xlsx
 ~$*.xls
+
+recap/info.md
