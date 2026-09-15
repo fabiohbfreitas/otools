@@ -1,5 +1,5 @@
 """Biblioteca da recaptação: leitura, distribuição e escrita (usada por envios.py)."""
-import glob, os, re, sys
+import csv, glob, os, re, sys
 from collections import Counter, defaultdict
 
 import openpyxl
@@ -53,14 +53,20 @@ def local_link(cfg, polo, esp):
 
 
 def load_inputs(indir):
-    pats = [indir] if os.path.isfile(indir) else sorted(glob.glob(os.path.join(indir, "*.xlsx")))
+    if os.path.isfile(indir):
+        pats = [indir]
+    else:
+        pats = sorted(glob.glob(os.path.join(indir, "*.xlsx")) + glob.glob(os.path.join(indir, "*.csv")))
     if not pats:
-        sys.exit(f"nenhum xlsx em {indir}")
+        sys.exit(f"nenhum xlsx/csv em {indir}")
     out = []
     for f in pats:
-        wb = openpyxl.load_workbook(f, data_only=True)
-        ws = wb.active
-        rows = list(ws.iter_rows(values_only=True))
+        if f.lower().endswith(".csv"):
+            with open(f, encoding="utf-8-sig", newline="") as fh:
+                rows = list(csv.reader(fh))
+        else:
+            wb = openpyxl.load_workbook(f, data_only=True)
+            rows = list(wb.active.iter_rows(values_only=True))
         hdr = [str(c).strip() if c else "" for c in rows[0][:8]]
         if hdr[:6] != INPUT_HDR[:6]:
             sys.exit(f"{f}: cabeçalho inesperado: {rows[0][:8]}")
