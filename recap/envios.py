@@ -7,9 +7,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from recap import (load_inputs, distribute, split_phones, pick_main, agenda_str,
                    local_link, check_metas, write_excedentes, validate_config)
 
-HERE = os.path.dirname(os.path.abspath(__file__))
 PAC_HDR = ["Nome", "Telefone", "Data Recaptação", "Data", "Hora", "Especialidade", "Local"]
-ENV_HDR = ["Nome", "Telefone", "Notas Internas", "Etiquetas", "Data", "Hora", "Especialidade", "Local", "LinkMaps"]
+ENV_HDR = ["Nome", "[paciente]", "Telefone", "Notas Internas", "Etiquetas", "[data]", "[horario]", "[especialidade]", "[local]", "[linkmaps]"]
 
 
 def esp_base(esp):
@@ -26,7 +25,7 @@ def build_envios(cfg, buckets, dates, polos_por_dia):
                 continue
             if pac:
                 pac.append([None] * 7)
-                env.append([None] * 9)
+                env.append([None] * 10)
             for p, slot in bloco:
                 hh, mm = slot.split(":")
                 t = datetime.time(int(hh), int(mm))
@@ -36,30 +35,28 @@ def build_envios(cfg, buckets, dates, polos_por_dia):
                 etiq = cfg["etiqueta_envios"].format(data_iso=d, polo=polo, esp=base, agenda=agenda_str(slot))
                 notas = ("Outros Telefones: " + ", ".join(rest)) if rest else None
                 pac.append([p["paciente"], p["tel_raw"] or None, p["data_recap"] or None, nova, t, p["esp"], polo])
-                env.append([p["paciente"], main, notas, etiq, nova, t, base, loc, link])
+                env.append([p["paciente"], p["paciente"], main, notas, etiq, nova, t, base, loc, link])
     return pac, env
 
 
-def write_envios(path, pac, env):
+def write_sheet(path, name, hdr, rows):
     wb = openpyxl.Workbook()
-    wb.remove(wb.active)
-    for name, hdr, rows in [("Envios", ENV_HDR, env), ("Pacientes", PAC_HDR, pac)]:
-        ws = wb.create_sheet(name)
-        ws.append(hdr)
-        for r in rows:
+    ws = wb.active
+    ws.title = name
+    ws.append(hdr)
+    for r in rows:
+        if any(r):
             ws.append(r)
-        for row in ws.iter_rows(min_row=2):
-            for c in row:
-                if isinstance(c.value, datetime.time):
-                    c.number_format = "HH:MM"
+    for row in ws.iter_rows(min_row=2):
+        for c in row:
+            if isinstance(c.value, datetime.time):
+                c.number_format = "HH:MM"
     wb.save(path)
 
 
 def selfcheck():
     assert PAC_HDR == ["Nome", "Telefone", "Data Recaptação", "Data", "Hora", "Especialidade", "Local"]
-    assert ENV_HDR == ["Nome", "Telefone", "Notas Internas", "Etiquetas", "Data", "Hora", "Especialidade", "Local", "LinkMaps"]
-    ex = openpyxl.load_workbook(os.path.join(HERE, "example_output.xlsx"))
-    assert [c.value for c in ex["Envios"][1]] == ENV_HDR
+    assert ENV_HDR == ["Nome", "[paciente]", "Telefone", "Notas Internas", "Etiquetas", "[data]", "[horario]", "[especialidade]", "[local]", "[linkmaps]"]
     assert "2026-09-10, Automação, Ortopedia, Gama, Agenda07h30" == \
         "{data_iso}, Automação, {esp}, {polo}, {agenda}".format(
             data_iso="2026-09-10", esp="Ortopedia", polo="Gama", agenda="Agenda07h30")
@@ -70,7 +67,7 @@ def selfcheck():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.json")
-    ap.add_argument("--inputs", default="Test-Input", help="pasta ou arquivo xlsx único")
+    ap.add_argument("--inputs", default="Input", help="pasta ou arquivo xlsx/csv único")
     ap.add_argument("--datas", required=False, help="AAAA-MM-DD,...")
     ap.add_argument("--polos-por-dia", default="", help='"Gama,Sobradinho;Samambaia,..." (vazio=todos por dia)')
     ap.add_argument("--out-dir", default=".")
@@ -102,18 +99,19 @@ def main():
     pac, env = build_envios(cfg, buckets, dates, polos_por_dia)
     d0 = datetime.date.fromisoformat(min(dates))
     d1 = datetime.date.fromisoformat(max(dates))
-    fname = f"Envios {d0:%d_%m}.xlsx" if d0 == d1 else f"Envios {d0:%d_%m}-{d1:%d_%m}.xlsx"
+    base = f"Recaptação {d0:%d_%m}" if d0 == d1 else f"Recaptação {d0:%d_%m}-{d1:%d_%m}"
     os.makedirs(a.out_dir, exist_ok=True)
-    path = os.path.join(a.out_dir, fname)
-    write_envios(path, pac, env)
-    print(f"  {path}")
+    for name, hdr, rows in [("Pacientes", PAC_HDR, pac), ("Envios", ENV_HDR, env)]:
+        path = os.path.join(a.out_dir, f"{base} - {name}.xlsx")
+        write_sheet(path, name, hdr, rows)
+        print(f"  {path}")
     if exced:
         edir = os.path.join(a.out_dir, "excedentes")
         os.makedirs(edir, exist_ok=True)
         epath = os.path.join(edir, f"excedentes_{d0:%d_%m}-{d1:%d_%m}.xlsx")
         write_excedentes(epath, exced)
         print(f"  {epath} ({len(exced)} excedentes)")
-    print(f"{len(patients)} pacientes -> {path}")
+    print(f"{len(patients)} pacientes -> {base} - Pacientes|Envios.xlsx")
 
 
 if __name__ == "__main__":
