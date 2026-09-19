@@ -2,7 +2,7 @@
 import sys
 from datetime import datetime
 
-from relatorio import COL_DATA, DADOS_DIR, OUT_RECAP, norm_tel, read_all
+from relatorio import DADOS_DIR, OUT_RECAP, norm_tel, read_all, read_dados
 
 COLS_DADOS = ["[paciente]", "Telefone", "[data]", "[procedimento]", "Local", "Edição"]
 
@@ -21,8 +21,8 @@ def main() -> None:
         raise SystemExit("uso: uv run recaptacao.py 22/09/2026 [23/09/2026 ...]")
     dias = [parse_dia(a) for a in sys.argv[1:]]
 
-    dados = read_all(DADOS_DIR)
-    from relatorio import COL_INTER, COL_STATUS, COL_TEL_DADOS, COL_TEL_REL, REL_DIR
+    dados = read_dados()
+    from relatorio import COL_DATA, COL_INTER, COL_STATUS, COL_TEL_DADOS, COL_TEL_REL, REL_DIR
 
     rel = read_all(REL_DIR)
     dados["_tel"] = dados[COL_TEL_DADOS].map(norm_tel)
@@ -30,12 +30,12 @@ def main() -> None:
     conf = rel.groupby("_tel")[COL_INTER].apply(lambda s: (s.astype(str).str.strip().str.lower() == "sim").any()).to_dict()
     dados["confirmado"] = dados["_tel"].map(conf).fillna(False).astype(bool)
 
-    desconhecidos = sorted(set(dias) - set(dados[COL_DATA].astype(str).unique()))
+    desconhecidos = sorted(set(dias) - set(dados["_dia"].astype(str).unique()))
     if desconhecidos:
         raise SystemExit(f"dias sem agenda em Dados: {desconhecidos}")
 
-    sel = dados[dados[COL_DATA].astype(str).isin(dias) & ~dados["confirmado"]]
-    sel = sel.sort_values(["[data]", "[procedimento]", "[paciente]"])
+    sel = dados[dados["_dia"].astype(str).isin(dias) & ~dados["confirmado"]]
+    sel = sel.sort_values(["_dia", "[procedimento]", "[paciente]"])
 
     OUT_RECAP.mkdir(exist_ok=True)
     tag = "+".join(d.replace("/", "-")[:-5] for d in sorted(set(dias), key=lambda d: datetime.strptime(d, "%d/%m/%Y")))
@@ -43,7 +43,7 @@ def main() -> None:
     sel[COLS_DADOS].to_excel(out, index=False)
 
     print(f"dias={dias} pendentes={len(sel)} -> {out}")
-    print(sel.groupby(COL_DATA).size().to_string() if len(sel) else "(nenhum pendente)")
+    print(sel.groupby("_dia").size().to_string() if len(sel) else "(nenhum pendente)")
 
 
 if __name__ == "__main__":

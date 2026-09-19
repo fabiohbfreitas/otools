@@ -38,8 +38,25 @@ def read_all(folder: Path) -> pd.DataFrame:
     return pd.concat(dfs, ignore_index=True)
 
 
+def read_dados() -> pd.DataFrame:
+    """Só formato plataforma ([paciente]/[data]/[procedimento]); original.xlsx é ignorado."""
+    dfs = []
+    for f in sorted(DADOS_DIR.glob("*.xlsx")):
+        df = pd.read_excel(f, sheet_name=0)
+        if "[paciente]" not in df.columns:
+            print(f"ignorado (fora do formato de envio): {f.name}")
+            continue
+        df["_arquivo"] = f.name
+        dfs.append(df)
+    if not dfs:
+        raise SystemExit("nenhum arquivo de envio em Dados/")
+    dados = pd.concat(dfs, ignore_index=True)
+    dados["_dia"] = dados[COL_DATA].astype(str).str.slice(0, 10)  # "22/09/2026 - A partir das 07:00" -> "22/09/2026"
+    return dados
+
+
 def main() -> None:
-    dados = read_all(DADOS_DIR)
+    dados = read_dados()
     rel = read_all(REL_DIR)
     orig_cols = [c for c in dados.columns if not c.startswith("_")]
 
@@ -55,7 +72,7 @@ def main() -> None:
     dados["status_envio"] = dados["_tel"].map(status).fillna("SEM ENVIO")
 
     n, nc = len(dados), int(dados["confirmado"].sum())
-    por_dia = dados.groupby(COL_DATA)["confirmado"].agg(n="size", confirmados="sum")
+    por_dia = dados.groupby("_dia")["confirmado"].agg(n="size", confirmados="sum")
     por_dia["taxa_%"] = (por_dia["confirmados"] / por_dia["n"] * 100).round(1)
 
     expl = dados.assign(_esp=dados[COL_PROC].str.split(";")).explode("_esp")
@@ -65,9 +82,9 @@ def main() -> None:
     por_esp = por_esp.sort_values("n", ascending=False)
 
     # Matriz especialidade (linhas) x dia (colunas): célula = "conf/n (taxa%)"
-    dias = sorted(expl[COL_DATA].astype(str).unique(),
+    dias = sorted(expl["_dia"].astype(str).unique(),
                   key=lambda d: datetime.strptime(d, "%d/%m/%Y"))
-    base = expl.groupby(["_esp", COL_DATA])["confirmado"].agg(n="size", confirmados="sum")
+    base = expl.groupby(["_esp", "_dia"])["confirmado"].agg(n="size", confirmados="sum")
     order = por_esp.index.tolist()
     mat = pd.DataFrame(index=order)
     for d in dias:
@@ -88,7 +105,7 @@ def main() -> None:
         "total_linhas": n, "telefones_unicos": dados["_tel"].nunique(),
         "confirmados": nc, "nao_confirmados": n - nc, "taxa_%": round(nc / n * 100, 1),
         "telefones_sem_whatsapp": len(sem_wa),
-        "arquivos_dados": sorted(p.name for p in DADOS_DIR.glob("*.xlsx")),
+        "arquivos_dados": sorted(dados["_arquivo"].unique().tolist()),
         "arquivos_relatorios": sorted(p.name for p in REL_DIR.glob("*.xlsx")),
         "gerado_em": datetime.now().strftime("%d/%m/%Y %H:%M"),
     }])
@@ -103,9 +120,9 @@ def main() -> None:
         status_tab.reset_index().to_excel(w, sheet_name="Status_envio", index=False)
 
     recaps = []
-    for data, g in dados[~dados["confirmado"]].groupby(COL_DATA):
-        fname = f"recap_{str(data).replace('/', '-')}.xlsx"
-        g[orig_cols].to_excel(OUT_RECAP / fname, index=False)
+    for dia, g in dados[~dados["confirmado"]].groupby("_dia"):
+        fname = f"recap_{dia.replace('/', '-')}.xlsx"
+        g[orig_cols].to_excel(OUT_RECAP / fname, index=False)  # orig_cols mantém [data] completo com hora
         recaps.append(f"{fname}: {len(g)}")
 
     print(f"linhas={n} confirmados={nc} taxa={nc / n * 100:.1f}%")
