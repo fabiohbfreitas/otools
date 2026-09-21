@@ -2,9 +2,8 @@
 import sys
 from datetime import datetime
 
-from relatorio import DADOS_DIR, OUT_RECAP, norm_tel, read_all, read_dados
-
-COLS_DADOS = ["[paciente]", "Telefone", "[data]", "[procedimento]", "Local", "Edição"]
+from relatorio import (COL_TEL_DADOS, COL_TEL_REL, OUT_RECAP, REL_DIR, confirmados_de,
+                       norm_tel, read_all, read_dados)
 
 
 def parse_dia(s: str) -> str:
@@ -22,13 +21,12 @@ def main() -> None:
     dias = [parse_dia(a) for a in sys.argv[1:]]
 
     dados = read_dados()
-    from relatorio import COL_DATA, COL_INTER, COL_STATUS, COL_TEL_DADOS, COL_TEL_REL, REL_DIR
+    orig_cols = [c for c in dados.columns if not c.startswith("_")]
 
     rel = read_all(REL_DIR)
     dados["_tel"] = dados[COL_TEL_DADOS].map(norm_tel)
     rel["_tel"] = rel[COL_TEL_REL].map(norm_tel)
-    conf = rel.groupby("_tel")[COL_INTER].apply(lambda s: (s.astype(str).str.strip().str.lower() == "sim").any()).to_dict()
-    dados["confirmado"] = dados["_tel"].map(conf).fillna(False).astype(bool)
+    dados["confirmado"] = dados["_tel"].map(confirmados_de(rel)).fillna(False).astype(bool)
 
     desconhecidos = sorted(set(dias) - set(dados["_dia"].astype(str).unique()))
     if desconhecidos:
@@ -40,7 +38,7 @@ def main() -> None:
     OUT_RECAP.mkdir(exist_ok=True)
     tag = "+".join(d.replace("/", "-")[:-5] for d in sorted(set(dias), key=lambda d: datetime.strptime(d, "%d/%m/%Y")))
     out = OUT_RECAP / f"recap_{tag}-2026.xlsx"
-    sel[COLS_DADOS].to_excel(out, index=False)
+    sel[orig_cols].to_excel(out, index=False)
 
     print(f"dias={dias} pendentes={len(sel)} -> {out}")
     print(sel.groupby("_dia").size().to_string() if len(sel) else "(nenhum pendente)")
