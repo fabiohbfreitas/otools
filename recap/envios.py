@@ -39,6 +39,15 @@ def build_envios(cfg, buckets, dates, polos_por_dia):
     return pac, env
 
 
+def output_base(dates, sufixo=""):
+    d0 = datetime.date.fromisoformat(min(dates))
+    d1 = datetime.date.fromisoformat(max(dates))
+    base = f"Recaptação {d0:%d_%m}" if d0 == d1 else f"Recaptação {d0:%d_%m}-{d1:%d_%m}"
+    if sufixo.strip():
+        base += f" {sufixo.strip()}"
+    return base
+
+
 def write_sheet(path, name, hdr, rows):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -61,6 +70,9 @@ def selfcheck():
         "{data_iso}, Automação, {esp}, {polo}, {agenda}".format(
             data_iso="2026-09-10", esp="Ortopedia", polo="Gama", agenda="Agenda07h30")
     assert esp_base("Ortopedia - Ombro") == "Ortopedia" and esp_base("Ortopedia") == "Ortopedia"
+    assert output_base(["2026-09-22"]) == "Recaptação 22_09"
+    assert output_base(["2026-09-22"], "Sobradinho Manhã") == "Recaptação 22_09 Sobradinho Manhã"
+    assert output_base(["2026-09-22", "2026-09-23"], "Gama") == "Recaptação 22_09-23_09 Gama"
     print("selfcheck ok")
 
 
@@ -71,6 +83,7 @@ def main():
     ap.add_argument("--datas", required=False, help="AAAA-MM-DD,...")
     ap.add_argument("--polos-por-dia", default="", help='"Gama,Sobradinho;Samambaia,..." (vazio=todos por dia)')
     ap.add_argument("--out-dir", default=".")
+    ap.add_argument("--sufixo", default="", help='ex: "Sobradinho Manhã" → Recaptação 22_09 Sobradinho Manhã - ...')
     ap.add_argument("--selfcheck", action="store_true")
     a = ap.parse_args()
     if a.selfcheck:
@@ -97,9 +110,9 @@ def main():
     for d, pls in zip(dates, polos_por_dia):
         print("  " + d + ": " + " ".join(f"{p}={len(buckets.get((d, p), []))}" for p in pls))
     pac, env = build_envios(cfg, buckets, dates, polos_por_dia)
+    base = output_base(dates, a.sufixo)
     d0 = datetime.date.fromisoformat(min(dates))
     d1 = datetime.date.fromisoformat(max(dates))
-    base = f"Recaptação {d0:%d_%m}" if d0 == d1 else f"Recaptação {d0:%d_%m}-{d1:%d_%m}"
     os.makedirs(a.out_dir, exist_ok=True)
     for name, hdr, rows in [("Pacientes", PAC_HDR, pac), ("Envios", ENV_HDR, env)]:
         path = os.path.join(a.out_dir, f"{base} - {name}.xlsx")
