@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Patient {
+  id           String   @id @default(cuid())
+  name         String
+  seq          Int      @default(0)
+  phones       String
+  primaryPhone String   @unique
+  polo         String
+  specialty    String
+  status       String
+  observation  String?
+  batchId      String
+  batch        ImportBatch @relation(fields: [batchId], references: [id])
+  campaigns    CampaignPatient[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([polo, specialty, status])
+}
+
+model ImportBatch {
+  id         String   @id @default(cuid())
+  fileName   String
+  sheets     String
+  rows       Int
+  importedAt DateTime @default(now())
+  patients   Patient[]
+}
+
+model DefaultConfig {
+  id         String @id @default(cuid())
+  polo       String
+  specialty  String
+  vacancies  Int
+  timeSlots  String
+  local      String @default("")
+  maps       String @default("")
+
+  @@unique([polo, specialty])
+}
+
+model Campaign {
+  id              String   @id @default(cuid())
+  name            String
+  appointmentDate DateTime
+  specialty       String
+  createdAt       DateTime @default(now())
+  slots           CampaignSlot[]
+  patients        CampaignPatient[]
+}
+
+model CampaignSlot {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  polo       String
+  vacancies  Int
+  times      CampaignSlotTime[]
+
+  @@unique([campaignId, polo])
+}
+
+model CampaignSlotTime {
+  id     String       @id @default(cuid())
+  slotId String
+  slot   CampaignSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  time   String
+  quota  Int?
+
+  @@unique([slotId, time])
+}
+
+model CampaignPatient {
+  id          String    @id @default(cuid())
+  campaignId  String
+  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  polo        String
+
+  @@unique([campaignId, patientId])
+}
