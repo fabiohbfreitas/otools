@@ -30,6 +30,10 @@ def agenda_str(slot):
     return f"Agenda{hh}h" if mm == "00" else f"Agenda{hh}h{mm}"
 
 
+def esp_base(esp):
+    return esp.split(" - ")[0] if esp else ""
+
+
 def assign_slots(items, slots, min_n):
     # ponytail: espalha nos horários necessários; mínimo min_n por slot, salvo resto final
     n = len(items)

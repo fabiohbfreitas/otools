@@ -4,15 +4,11 @@ import argparse, datetime, json, os, sys
 import openpyxl
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from recap import (load_inputs, distribute, split_phones, pick_main, agenda_str,
+from recap import (load_inputs, distribute, split_phones, pick_main, agenda_str, esp_base,
                    local_link, check_metas, write_excedentes, validate_config)
 
 PAC_HDR = ["Nome", "Telefone", "Data Recaptação", "Data", "Hora", "Especialidade", "Local"]
 ENV_HDR = ["Nome", "[paciente]", "Telefone", "Notas Internas", "Etiquetas", "[data]", "[horario]", "[especialidade]", "[local]", "[linkmaps]"]
-
-
-def esp_base(esp):
-    return esp.split(" - ")[0] if esp else ""
 
 
 def build_envios(cfg, buckets, dates, polos_por_dia):
