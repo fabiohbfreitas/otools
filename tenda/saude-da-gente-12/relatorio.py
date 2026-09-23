@@ -1,5 +1,7 @@
 """Relatório Saúde da Gente 12: confirmação por telefone + recaptação."""
 import re
+import sys
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -69,6 +71,17 @@ def confirmados_de(rel: pd.DataFrame) -> dict[str, bool]:
     return rel.assign(_sim=sim).groupby("_tel")["_sim"].any().to_dict()
 
 
+def norm_esp(e: str) -> str:
+    a = unicodedata.normalize("NFKD", str(e)).encode("ascii", "ignore").decode().upper().strip()
+    if a.startswith("TOMOGRAFIA"):
+        return "TOMOGRAFIA"
+    if a.startswith("RESSONANCIA"):
+        return "RESSONANCIA"
+    if a.startswith("US ") or a == "US":
+        return "ULTRASSONOGRAFIA"
+    return a
+
+
 def main() -> None:
     dados = read_dados()
     rel = read_all(REL_DIR)
@@ -90,7 +103,7 @@ def main() -> None:
     por_dia["taxa_%"] = (por_dia["confirmados"] / por_dia["n"] * 100).round(1)
 
     expl = dados.assign(_esp=dados[COL_PROC].str.split(";")).explode("_esp")
-    expl["_esp"] = expl["_esp"].str.strip()
+    expl["_esp"] = expl["_esp"].map(norm_esp)
     por_esp = expl.groupby("_esp")["confirmado"].agg(n="size", confirmados="sum")
     por_esp["taxa_%"] = (por_esp["confirmados"] / por_esp["n"] * 100).round(1)
     por_esp = por_esp.sort_values("n", ascending=False)
@@ -143,16 +156,18 @@ def main() -> None:
             f.unlink()  # ponytail: só o mais recente sobrevive
 
     recaps = []
-    for dia, g in dados[~dados["confirmado"]].groupby("_dia"):
-        fname = f"recap_{dia.replace('/', '-')}.xlsx"
-        g[orig_cols].to_excel(OUT_RECAP / fname, index=False)  # orig_cols mantém [data] completo com hora
-        recaps.append(f"{fname}: {len(g)}")
+    if "--sem-recap" not in sys.argv:
+        for dia, g in dados[~dados["confirmado"]].groupby("_dia"):
+            fname = f"recap_{dia.replace('/', '-')}.xlsx"
+            g[orig_cols].to_excel(OUT_RECAP / fname, index=False)  # orig_cols mantém [data] completo com hora
+            recaps.append(f"{fname}: {len(g)}")
 
     print(f"linhas={n} confirmados={nc} taxa={nc / n * 100:.1f}%")
     print(por_dia.to_string())
     print(f"OK -> {out}")
-    print("Recaptação (inclui sem WhatsApp):")
-    print("\n".join(recaps) if recaps else " (nenhum pendente)")
+    if "--sem-recap" not in sys.argv:
+        print("Recaptação (inclui sem WhatsApp):")
+        print("\n".join(recaps) if recaps else " (nenhum pendente)")
 
 
 if __name__ == "__main__":
