@@ -50,6 +50,42 @@ def assign_slots(items, slots, min_n):
     return out
 
 
+def norm_key(nome, fone):
+    return (" ".join(str(nome or "").upper().split()), re.sub(r"\D", "", str(fone or "")))
+
+
+def load_negativa(path):
+    # set de (nome, principal); linha sem principal nunca casa
+    wb = openpyxl.load_workbook(path, data_only=True)
+    keys = set()
+    if "Envios" in wb.sheetnames:
+        ws = wb["Envios"]
+        hdr = [c.value for c in ws[1]]
+        for col in ("[paciente]", "Telefone"):
+            if col not in hdr:
+                sys.exit(f"lista negativa: coluna '{col}' ausente em Envios")
+        i_n, i_t = hdr.index("[paciente]"), hdr.index("Telefone")
+        for r in ws.iter_rows(min_row=2, values_only=True):
+            if r[i_n] and r[i_t]:
+                keys.add(norm_key(r[i_n], r[i_t]))
+    elif "Pacientes" in wb.sheetnames:
+        ws = wb["Pacientes"]
+        hdr = [c.value for c in ws[1]]
+        for col in ("Nome", "Telefone"):
+            if col not in hdr:
+                sys.exit(f"lista negativa: coluna '{col}' ausente em Pacientes")
+        i_n, i_t = hdr.index("Nome"), hdr.index("Telefone")
+        for r in ws.iter_rows(min_row=2, values_only=True):
+            if not r[i_n]:
+                continue
+            main, _ = pick_main(split_phones(r[i_t]))
+            if main:
+                keys.add(norm_key(r[i_n], main))
+    else:
+        sys.exit(f"lista negativa sem abas Envios/Pacientes: {path}")
+    return keys
+
+
 def local_link(cfg, polo, esp):
     p = cfg["polos"][polo]
     ov = (p.get("especialidades") or {}).get(esp) or {}
@@ -178,4 +214,15 @@ def selfcheck():
     assert plan_quotas(441, 2, 154) == [154, 154]
     assert plan_quotas(200, 3, 70) == [70, 70, 60]
     assert plan_quotas(10, 3) == [4, 3, 3]
+    assert norm_key("  Maria  Silva ", "(61) 99828-7480") == ("MARIA SILVA", "61998287480")
+    import tempfile
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Envios"
+    ws.append(["Nome", "[paciente]", "Telefone"])
+    ws.append(["Ana Souza", "Ana Souza", "(61) 99999-0001"])
+    ws.append(["Sem Fone", "Sem Fone", None])
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tf:
+        wb.save(tf.name)
+        assert load_negativa(tf.name) == {("ANA SOUZA", "61999990001")}
     print("selfcheck ok")
