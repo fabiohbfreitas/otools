@@ -4,15 +4,11 @@ import argparse, datetime, json, os, sys
 import openpyxl
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from recap import (load_inputs, distribute, split_phones, pick_main, agenda_str,
-                   local_link, check_metas, write_excedentes, validate_config)
+from recap import (load_inputs, distribute, split_phones, pick_main, agenda_str, esp_base,
+                   local_link, check_metas, write_excedentes, validate_config, load_negativa, norm_key)
 
 PAC_HDR = ["Nome", "Telefone", "Data Recaptação", "Data", "Hora", "Especialidade", "Local"]
 ENV_HDR = ["Nome", "[paciente]", "Telefone", "Notas Internas", "Etiquetas", "[data]", "[horario]", "[especialidade]", "[local]", "[linkmaps]"]
-
-
-def esp_base(esp):
-    return esp.split(" - ")[0] if esp else ""
 
 
 def build_envios(cfg, buckets, dates, polos_por_dia):
@@ -84,6 +80,7 @@ def main():
     ap.add_argument("--polos-por-dia", default="", help='"Gama,Sobradinho;Samambaia,..." (vazio=todos por dia)')
     ap.add_argument("--out-dir", default=".")
     ap.add_argument("--sufixo", default="", help='ex: "Sobradinho Manhã" → Recaptação 22_09 Sobradinho Manhã - ...')
+    ap.add_argument("--lista-negativa", default="", help="xlsx Pacientes/Envios p/ excluir já enviados")
     ap.add_argument("--selfcheck", action="store_true")
     a = ap.parse_args()
     if a.selfcheck:
@@ -104,6 +101,17 @@ def main():
     for p in patients:
         if p["polo"] not in cfg["polos"]:
             sys.exit(f"polo sem config: {p['polo']}")
+    if a.lista_negativa:
+        neg = load_negativa(a.lista_negativa)
+        mantidos = []
+        for p in patients:
+            main, _ = pick_main(split_phones(p["tel_raw"]))
+            if norm_key(p["paciente"], main) in neg:
+                print(f"  desconsiderado: {p['paciente']}")
+            else:
+                mantidos.append(p)
+        print(f"{len(patients) - len(mantidos)} desconsiderados (lista negativa) → {len(mantidos)} restantes")
+        patients = mantidos
     buckets, exced = distribute(patients, dates, polos_por_dia, cfg["slots"], cfg_min, metas)
     for w in check_metas(buckets, dates, polos_por_dia, metas, cfg_min):
         print(w)
