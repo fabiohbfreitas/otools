@@ -1,5 +1,5 @@
 {
-  "slots": ["06:45", "07:30", "08:15", "09:00", "09:45", "10:20"],
+  "slots": ["13:00", "13:45", "14:30", "15:15"],
   "min_por_horario": 5,
   "etiqueta_template": "{data_iso}, Automação, {polo}, {esp}, {agenda}",
   "etiqueta_envios": "{data_iso}, Automação, {esp}, {polo}, {agenda}",
