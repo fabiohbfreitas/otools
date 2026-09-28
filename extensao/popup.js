@@ -3,7 +3,7 @@
    ========================================== */
 let rawTableHTML = "";
 let parsedSourceRows = []; // Standardized structural rows
-let naoConsultadosPending = []; // Parsed rows from the current page (tblConfirmacao)
+let naoConsultadosPending = []; // Parsed rows from the current page (confirmation tables)
 let naoConsultadosAccum = []; // Deduplicated accumulation across pages
 let statusTimeout;
 
@@ -404,10 +404,6 @@ function runAllPipelines() {
 }
 
 /* ==========================================
-   DOWNLOAD WRAPPERS
-   ========================================== */
-
-/* ==========================================
    ENVIOS (Paciente + Envios, 2 abas)
    ========================================== */
 function splitEnviosPhones(phoneStr) {
@@ -555,7 +551,7 @@ function downloadAsMultiSheetExcel(sheets, fileName, statusTarget) {
 }
 
 /* ==========================================
-   NÃO CONSULTADOS (tblConfirmacao)
+   NÃO CONSULTADOS
    ========================================== */
 const NAO_CONSULTADO_HEADERS = [
   "Paciente",
@@ -807,28 +803,8 @@ function downloadNaoConsultadosData() {
 }
 
 /* ==========================================
-   CSV & SHEET ENGINES
+   SHEET ENGINES
    ========================================== */
-const CRLF = "\r\n";
-
-function escapeField(f) {
-  const str = typeof f === "string" ? f : String(f ?? "");
-  return `"${str.replace(/"/g, '""')}"`;
-}
-
-function generateCSV(dataList, headers, fieldMap) {
-  if (!dataList.length) return "";
-  const rows = [headers.join(",")];
-  dataList.forEach((row) => {
-    rows.push(
-      headers
-        .map((h) => escapeField(fieldMap ? row[fieldMap[h] || h] : row[h]))
-        .join(","),
-    );
-  });
-  return rows.join(CRLF);
-}
-
 function triggerDownload(blob, fileName) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -836,14 +812,6 @@ function triggerDownload(blob, fileName) {
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-function downloadAsCSV(csvOutputStr, fileName, statusTarget) {
-  const blob = new Blob([new Uint8Array([0xef, 0xbb, 0xbf]), csvOutputStr], {
-    type: "text/csv;charset=utf-8;",
-  });
-  triggerDownload(blob, fileName);
-  showStatus(`"${fileName}" baixado!`, "success", statusTarget);
 }
 
 function downloadAsExcel(sheetData, fileName, statusTarget) {
