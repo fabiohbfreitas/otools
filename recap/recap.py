@@ -5,6 +5,12 @@ from collections import Counter, defaultdict
 import openpyxl
 
 INPUT_HDR = ["Paciente", "Telefone", "Data", "Horário", "Unidade", "Especialidade", "Situação", "Observação"]
+HDR_ALIAS = {"DATAAGENDAMENTO": "Data", "HORARIO": "Horário", "SITUACAO": "Situação",
+             "OBSERVACAO": "Observação", "OBS": "Observação"}
+
+
+def norm_hdr(name):
+    return HDR_ALIAS.get("".join(str(name or "").strip().upper().split()), str(name).strip() if name else "")
 
 
 def split_phones(raw):
@@ -107,7 +113,7 @@ def load_inputs(indir):
         else:
             wb = openpyxl.load_workbook(f, data_only=True)
             rows = list(wb.active.iter_rows(values_only=True))
-        hdr = [str(c).strip() if c else "" for c in rows[0][:8]]
+        hdr = [norm_hdr(c) for c in rows[0][:8]]
         if hdr[:6] != INPUT_HDR[:6]:
             sys.exit(f"{f}: cabeçalho inesperado: {rows[0][:8]}")
         for r in rows[1:]:
@@ -215,6 +221,8 @@ def selfcheck():
     assert plan_quotas(200, 3, 70) == [70, 70, 60]
     assert plan_quotas(10, 3) == [4, 3, 3]
     assert norm_key("  Maria  Silva ", "(61) 99828-7480") == ("MARIA SILVA", "61998287480")
+    assert norm_hdr("DataAgendamento") == "Data" and norm_hdr("Horario") == "Horário"
+    assert norm_hdr("Situacao") == "Situação" and norm_hdr("Data") == "Data"
     import tempfile
     wb = openpyxl.Workbook()
     ws = wb.active
