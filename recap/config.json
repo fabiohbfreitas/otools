@@ -1,8 +1,18 @@
 {
-  "slots": ["13:00", "13:45", "14:30", "15:15"],
+  "slots": [
+    "07:30",
+    "08:00",
+    "08:30",
+    "09:00",
+    "09:30",
+    "10:00",
+    "10:30",
+    "11:00"
+  ],
   "min_por_horario": 5,
   "etiqueta_template": "{data_iso}, Automação, {polo}, {esp}, {agenda}",
   "etiqueta_envios": "{data_iso}, Automação, {esp}, {polo}, {agenda}",
+  "modelo_comunicados": "OCI - ORTOPEDIA POLO - DATA.xlsx",
   "polos": {
     "Sobradinho": {
       "endereco": "Centro Clínico Sobradinho - Q 8 ao lado do Hospital Regional de Sobradinho - Sobradinho, Brasília - DF, 73005-080",

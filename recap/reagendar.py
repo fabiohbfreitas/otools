@@ -1,12 +1,11 @@
 """Reagendar: troca os horários de um Pacientes+Envios já gerado, preservando o resto."""
 import argparse, datetime, json, os, sys
 from collections import Counter
-from copy import copy
 
 import openpyxl
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from recap import agenda_str, assign_slots, esp_base
+from recap import agenda_str, assign_slots, esp_base, write_comunicados
 
 
 def check_slot(s):
@@ -106,13 +105,12 @@ def save_sheet(src_ws, path):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = src_ws.title
-    for row in src_ws.iter_rows():
+    for row in src_ws.iter_rows(values_only=True):
+        ws.append(row)
+    for row in ws.iter_rows(min_row=2):
         for c in row:
-            nc = ws.cell(row=c.row, column=c.column, value=c.value)
-            if c.has_style:
-                nc._style = copy(c._style)
-    for col, dim in src_ws.column_dimensions.items():
-        ws.column_dimensions[col].width = dim.width
+            if isinstance(c.value, datetime.time):
+                c.number_format = "HH:MM"
     wb.save(path)
 
 
@@ -135,6 +133,7 @@ def main():
     ap.add_argument("--cotas", default="", help='"07:30=10,..." (exige --horarios)')
     ap.add_argument("--nova-data", default="", help="AAAA-MM-DD (opcional)")
     ap.add_argument("--sufixo", default="", help='ex: "v2" (nome dos arquivos)')
+    ap.add_argument("--min", type=int, default=0, help="mínimo por horário (0=usa o config)")
     ap.add_argument("--config", default="config.json")
     ap.add_argument("--selfcheck", action="store_true")
     a = ap.parse_args()
@@ -149,7 +148,7 @@ def main():
     if a.nova_data:
         datetime.date.fromisoformat(a.nova_data)
     cfg = json.load(open(a.config, encoding="utf-8"))
-    min_n = cfg.get("min_por_horario", 4)
+    min_n = a.min if a.min and a.min > 0 else cfg.get("min_por_horario", 4)
     slots = [check_slot(s.strip()) for s in a.horarios.split(",") if s.strip()] if a.horarios else []
     grupos = parse_grupos(a.grupos) if a.grupos else None
     cotas = parse_cotas(a.cotas) if a.cotas else None
@@ -161,6 +160,8 @@ def main():
     hp = [c.value for c in wp[1]]
     he = [c.value for c in we[1]]
     i_nome = col_idx(hp, "Nome", "Pacientes")
+    i_tel = col_idx(hp, "Telefone", "Pacientes")
+    i_notas = hp.index("Notas Internas") if "Notas Internas" in hp else (2 if len(hp) > 6 else None)
     i_hora = col_idx(hp, "Hora", "Pacientes")
     i_data_p = col_idx(hp, "Data", "Pacientes")
     i_esp = col_idx(hp, "Especialidade", "Pacientes")
@@ -184,12 +185,33 @@ def main():
         if a.nova_data:
             set_data(rp[i_data_p], iso)
             set_data(re[i_dat], iso)
-    f_pac, f_env = output_names(a.input, a.sufixo)
-    save_sheet(wp, f_pac)
+    f_env = output_names(a.input, a.sufixo)[1]
     save_sheet(we, f_env)
+    print(f"  {f_env}")
+    outdir = os.path.dirname(os.path.abspath(f_env))
+    grupos_oci = {}
+    for rp in rows_p:
+        iso = a.nova_data or iso_of(rp[i_data_p].value)
+        polo = str(rp[i_loc].value).strip()
+        base_esp = esp_base(str(rp[i_esp].value) if rp[i_esp].value else "")
+        fones = str(rp[i_tel].value or "")
+        if i_notas is not None and rp[i_notas].value:
+            resto = str(rp[i_notas].value).replace("Outros Telefones:", "").strip()
+            if resto:
+                fones += ", " + resto
+        hv = rp[i_hora].value
+        horario = hv.strftime("%H:%M") if hasattr(hv, "strftime") else str(hv)
+        grupos_oci.setdefault((iso, base_esp.upper(), polo.upper()), []).append((rp[i_nome].value, fones, horario))
+    for (iso, esp, polo), linhas in sorted(grupos_oci.items()):
+        aa, mm, dd = iso.split("-")
+        ddashed = f"{dd}-{mm}-{aa}"
+        fn = f"OCI - {esp} {polo} - {ddashed}.xlsx"
+        write_comunicados(cfg.get("modelo_comunicados", "OCI - ORTOPEDIA POLO - DATA.xlsx"),
+                          os.path.join(outdir, fn), f"COMUNICADOS {esp} {polo} {ddashed}", linhas)
+        print(f"  {fn} ({len(linhas)})")
     for s, k in sorted(Counter(novo).items()):
         print(f"  {s}: {k}")
-    print(f"{len(novo)} pacientes -> {f_pac} | {f_env}")
+    print(f"{len(novo)} pacientes -> {f_env} + OCI")
 
 
 if __name__ == "__main__":
