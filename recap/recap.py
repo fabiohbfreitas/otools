@@ -202,6 +202,23 @@ def write_excedentes(path, pacientes):
     wb.save(path)
 
 
+def write_comunicados(modelo_path, out_path, titulo, linhas):
+    # parte do modelo intacto (todas as abas); só preenche o título e anexa NOME+FONES+HORÁRIO em COMUNICADOS
+    wb = openpyxl.load_workbook(modelo_path)
+    if "COMUNICADOS" not in wb.sheetnames:
+        sys.exit(f"modelo sem aba COMUNICADOS: {modelo_path}")
+    ws = wb["COMUNICADOS"]
+    ws["A1"].value = titulo
+    for row in linhas:
+        if len(row) == 3:
+            nome, fones, horario = row
+            ws.append([nome, fones, horario])
+        else:
+            nome, fones = row
+            ws.append([nome, fones])
+    wb.save(out_path)
+
+
 def selfcheck():
     assert pick_main(["(61) 3485-9002", "(61) 99587-0517", "(61) 99132-0964"])[0] == "(61) 99587-0517"
     assert pick_main(["(61) 3315-2425", "(61) 9938-2494", "(61) 99636-9724"])[0] == "(61) 99636-9724"
@@ -233,4 +250,20 @@ def selfcheck():
     with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tf:
         wb.save(tf.name)
         assert load_negativa(tf.name) == {("ANA SOUZA", "61999990001")}
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        out = os.path.join(td, "oci.xlsx")
+        write_comunicados("OCI - ORTOPEDIA POLO - DATA.xlsx", out, "COMUNICADOS ORTOPEDIA GAMA 30-09-2026",
+                          [("Ana Souza", "(61) 99999-0001, (61) 98888-0002", "07:30")])
+        ex = openpyxl.load_workbook("OCI - ORTOPEDIA POLO - DATA.xlsx", data_only=True)["COMUNICADOS"]
+        go = openpyxl.load_workbook(out, data_only=True)["COMUNICADOS"]
+        assert [c.value for c in go[2]] == [c.value for c in ex[2]]
+        assert go["C2"].value == "HORÁRIO"
+        assert go.column_dimensions["A"].width == ex.column_dimensions["A"].width
+        assert [go["A1"].value, go["A3"].value, go["B3"].value, go["C3"].value] == \
+            ["COMUNICADOS ORTOPEDIA GAMA 30-09-2026", "Ana Souza", "(61) 99999-0001, (61) 98888-0002", "07:30"]
+        assert "CONFIRMADOS" in openpyxl.load_workbook(out).sheetnames
+        # CONFIRMADOS deve estar limpo (sem dummy)
+        ws_c = openpyxl.load_workbook(out, data_only=True)["CONFIRMADOS"]
+        assert ws_c["B3"].value is None and ws_c["A3"].value == "07:30H"
     print("selfcheck ok")

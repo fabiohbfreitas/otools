@@ -5,9 +5,9 @@ import openpyxl
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from recap import (load_inputs, distribute, split_phones, pick_main, agenda_str, esp_base,
-                   local_link, check_metas, write_excedentes, validate_config, load_negativa, norm_key)
+                   local_link, check_metas, write_excedentes, validate_config, load_negativa, norm_key,
+                   write_comunicados)
 
-PAC_HDR = ["Nome", "Telefone", "Data Recaptação", "Data", "Hora", "Especialidade", "Local"]
 ENV_HDR = ["Nome", "[paciente]", "Telefone", "Notas Internas", "Etiquetas", "[data]", "[horario]", "[especialidade]", "[local]", "[linkmaps]"]
 
 
@@ -60,7 +60,6 @@ def write_sheet(path, name, hdr, rows):
 
 
 def selfcheck():
-    assert PAC_HDR == ["Nome", "Telefone", "Data Recaptação", "Data", "Hora", "Especialidade", "Local"]
     assert ENV_HDR == ["Nome", "[paciente]", "Telefone", "Notas Internas", "Etiquetas", "[data]", "[horario]", "[especialidade]", "[local]", "[linkmaps]"]
     assert "2026-09-10, Automação, Ortopedia, Gama, Agenda07h30" == \
         "{data_iso}, Automação, {esp}, {polo}, {agenda}".format(
@@ -122,10 +121,24 @@ def main():
     d0 = datetime.date.fromisoformat(min(dates))
     d1 = datetime.date.fromisoformat(max(dates))
     os.makedirs(a.out_dir, exist_ok=True)
-    for name, hdr, rows in [("Pacientes", PAC_HDR, pac), ("Envios", ENV_HDR, env)]:
-        path = os.path.join(a.out_dir, f"{base} - {name}.xlsx")
-        write_sheet(path, name, hdr, rows)
-        print(f"  {path}")
+    path = os.path.join(a.out_dir, f"{base} - Envios.xlsx")
+    write_sheet(path, "Envios", ENV_HDR, env)
+    print(f"  {path}")
+    grupos = {}
+    for r in pac:
+        if not r[0]:
+            continue
+        dd, mm, aa = r[3].split("/")
+        horario = r[4].strftime("%H:%M") if hasattr(r[4], "strftime") else str(r[4])
+        grupos.setdefault((f"{aa}-{mm}-{dd}", esp_base(r[5]).upper(), r[6].upper()), []).append((r[0], r[1], horario))
+    for (iso, esp, polo), linhas in sorted(grupos.items()):
+        aa, mm, dd = iso.split("-")
+        ddashed = f"{dd}-{mm}-{aa}"
+        titulo = f"COMUNICADOS {esp} {polo} {ddashed}"
+        fn = f"OCI - {esp} {polo} - {ddashed}.xlsx"
+        write_comunicados(cfg.get("modelo_comunicados", "OCI - ORTOPEDIA POLO - DATA.xlsx"),
+                          os.path.join(a.out_dir, fn), titulo, linhas)
+        print(f"  {os.path.join(a.out_dir, fn)} ({len(linhas)})")
     if exced:
         edir = os.path.join(a.out_dir, "excedentes")
         os.makedirs(edir, exist_ok=True)

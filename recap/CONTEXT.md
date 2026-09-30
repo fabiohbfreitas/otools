@@ -5,8 +5,9 @@ Stack: Python + uv (`uv run <script> [flags]`). Dep única: `openpyxl`.
 
 ## Scripts
 
-- **`envios.py` (principal):** lê inputs brutos → distribui por data/polo/horário → grava o par
-  `Recaptação {DD_MM} [{sufixo}] - Pacientes.xlsx` + `... - Envios.xlsx`.
+- **`envios.py` (principal):** lê inputs brutos → distribui por data/polo/horário → grava
+  `Recaptação {DD_MM} [{sufixo}] - Envios.xlsx` + 1 arquivo OCI por polo
+  (`OCI - {ESP} {POLO} - {DD-MM-AAAA}.xlsx`, só aba `COMUNICADOS`).
 - **`recap.py` (biblioteca, sem CLI):** leitura, distribuição, telefones, etiquetas,
   excedentes, validação, selfchecks. Importado pelos outros dois.
 - **`reagendar.py`:** troca SÓ os horários de um Pacientes+Envios já gerado.
@@ -53,7 +54,10 @@ Stack: Python + uv (`uv run <script> [flags]`). Dep única: `openpyxl`.
 
 ## Saídas (recaptação)
 
-- `Pacientes`: `Nome, Telefone, Data Recaptação, Data, Hora, Especialidade, Local(=polo)`.
+- `OCI - {ESP} {POLO} - {DD-MM-AAAA}.xlsx` (1 por esp+polo): clone da aba `COMUNICADOS`
+  do modelo (`modelo_comunicados` no config) com título preenchido
+  (`COMUNICADOS ORTOPEDIA GAMA 30-09-2026`) + linhas `NOME` e `TELEFONE` (todos os fones).
+  Restante das colunas (`ATENDIDO`, …) é preenchido à mão. Substitui o antigo `Pacientes`.
 - `Envios`: `Nome, [paciente], Telefone, Notas Internas, Etiquetas, [data], [horario],
   [especialidade], [local], [linkmaps]`. Colunas `[x]` = variáveis do template da plataforma;
   sem `[ ]` = só CRM.
@@ -69,8 +73,9 @@ Stack: Python + uv (`uv run <script> [flags]`). Dep única: `openpyxl`.
   - `--grupos "20:s1,s2;17:s3,s4"` → N primeiros p/ conjunto A, próximos M p/ B (soma = total, senão erro);
   - `--cotas "s1=N,…"` (exige `--horarios`) → N exatos no horário, resto igual nos demais (com mínimo).
 - `--nova-data AAAA-MM-DD` (opcional): sem ela, Data intacta.
-- Saída: `<base> [--sufixo] - Pacientes.xlsx` + `<base> [--sufixo] - Envios.xlsx`,
-  **mesmo layout/tipos da entrada**; só Hora/`[horario]`/Etiquetas mudam (+Data com `--nova-data`).
+- Saída: `<base> [--sufixo] - Envios.xlsx` (**mesmo layout/tipos da entrada**;
+  só Hora/`[horario]`/Etiquetas mudam, +Data com `--nova-data`) + OCI por esp+polo
+  (Pacientes em formato antigo não é mais gerado).
 
 ## Lista negativa (`--lista-negativa ARQ` no `envios.py`)
 
@@ -85,7 +90,7 @@ Stack: Python + uv (`uv run <script> [flags]`). Dep única: `openpyxl`.
 2. Todo paciente do input aparece exatamente 1x na saída (alocado ou excedente),
    exceto filtrados pela lista negativa (logados).
 3. Reagendar nunca altera nada além de Hora/`[horario]`/Etiquetas (+Data com `--nova-data`).
-4. `Pacientes` sempre carrega todos os telefones; `Envios`, só o principal + resto em Notas.
+4. O OCI sempre carrega todos os telefones (separados por `, `); `Envios`, só o principal + resto em Notas.
 5. Sem `--sufixo`, nomes de saída nunca mudam; `reagendar` nunca sobrescreve a entrada.
 
 ## Casos de uso típicos

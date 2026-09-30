@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Extração de Dados (SISREGIII)",
-  "version": "1.0",
-  "description": "Extrai, transforma e exporta dados do SISREGIII.",
+  "name": "Utilitário de Dados",
+  "version": "1.0.0",
+  "description": "Extrai tabelas da página ativa e exporta para Excel.",
   "permissions": [
     "activeTab",
     "scripting",
